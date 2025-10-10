@@ -277,7 +277,7 @@ function App() {
     sendEvent({
       type: 'session.update',
       session: {
-        turn_detection: turnDetection,
+        type: 'realtime',
       },
     });
 
