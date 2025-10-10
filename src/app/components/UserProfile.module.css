@@ -1,0 +1,169 @@
+.userProfile {
+  position: relative;
+}
+
+.userButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.userButton:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.userIcon {
+  font-size: 1.2rem;
+}
+
+.username {
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 320px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  padding: 16px;
+  z-index: 1000;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.userInfo {
+  margin-bottom: 12px;
+}
+
+.infoRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  font-size: 0.9rem;
+  color: #f1f5f9;
+}
+
+.label {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.divider {
+  height: 1px;
+  background: #334155;
+  margin: 12px 0;
+}
+
+.googleSection h4 {
+  margin: 0 0 12px 0;
+  font-size: 0.95rem;
+  color: #f1f5f9;
+}
+
+.googleServices {
+  margin-bottom: 12px;
+}
+
+.serviceItem {
+  padding: 8px 12px;
+  background: #0f172a;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+  color: #f1f5f9;
+}
+
+.serviceItem strong {
+  color: #94a3b8;
+}
+
+.serviceItem.connected strong {
+  color: #10b981;
+}
+
+.buttonGroup {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.btnGoogle,
+.btnDanger {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btnGoogle {
+  background: white;
+  color: #333;
+}
+
+.btnGoogle:hover:not(:disabled) {
+  background: #f8f9fa;
+  transform: translateY(-1px);
+}
+
+.btnGoogle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btnDanger {
+  background: #ef4444;
+  color: white;
+}
+
+.btnDanger:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+.logoutButton {
+  width: 100%;
+  padding: 10px;
+  background: #64748b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.logoutButton:hover {
+  background: #475569;
+  transform: translateY(-1px);
+}

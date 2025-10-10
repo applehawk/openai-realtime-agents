@@ -9,6 +9,7 @@ import Image from "next/image";
 import Transcript from "./components/Transcript";
 import Events from "./components/Events";
 import BottomToolbar from "./components/BottomToolbar";
+import UserProfile from "./components/UserProfile";
 
 // Types
 import { SessionStatus } from "@/app/types";
@@ -264,16 +265,6 @@ function App() {
     // Reflect Push-to-Talk UI state by (de)activating server VAD on the
     // backend. The Realtime SDK supports live session updates via the
     // `session.update` event.
-    const turnDetection = isPTTActive
-      ? null
-      : {
-          type: 'server_vad',
-          threshold: 0.9,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 500,
-          create_response: true,
-        };
-
     sendEvent({
       type: 'session.update',
       session: {
@@ -456,7 +447,8 @@ function App() {
             Realtime API <span className="text-gray-500">Agents</span>
           </div>
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center gap-4">
+          <UserProfile />
           <label className="flex items-center text-base gap-1 mr-2 font-medium">
             Scenario
           </label>
