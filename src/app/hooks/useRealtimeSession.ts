@@ -13,6 +13,7 @@ import { SessionStatus } from '../types';
 export interface RealtimeSessionCallbacks {
   onConnectionChange?: (status: SessionStatus) => void;
   onAgentHandoff?: (agentName: string) => void;
+  onSessionTimeout?: () => void;
 }
 
 export interface ConnectOptions {
@@ -21,10 +22,13 @@ export interface ConnectOptions {
   audioElement?: HTMLAudioElement;
   extraContext?: Record<string, any>;
   outputGuardrails?: any[];
+  model?: string;
 }
 
 export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
   const sessionRef = useRef<RealtimeSession | null>(null);
+  const sessionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isConnectingRef = useRef<boolean>(false);
   const [status, setStatus] = useState<
     SessionStatus
   >('DISCONNECTED');
@@ -86,27 +90,39 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
   };
 
   useEffect(() => {
-    if (sessionRef.current) {
-      // Log server errors
-      sessionRef.current.on("error", (...args: any[]) => {
-        logServerEvent({
-          type: "error",
-          message: args[0],
-        });
+    const session = sessionRef.current;
+    if (!session) return;
+
+    // Define error handler
+    const handleError = (...args: any[]) => {
+      logServerEvent({
+        type: "error",
+        message: args[0],
       });
+    };
 
-      // history events
-      sessionRef.current.on("agent_handoff", handleAgentHandoff);
-      sessionRef.current.on("agent_tool_start", historyHandlers.handleAgentToolStart);
-      sessionRef.current.on("agent_tool_end", historyHandlers.handleAgentToolEnd);
-      sessionRef.current.on("history_updated", historyHandlers.handleHistoryUpdated);
-      sessionRef.current.on("history_added", historyHandlers.handleHistoryAdded);
-      sessionRef.current.on("guardrail_tripped", historyHandlers.handleGuardrailTripped);
+    // Register all event listeners
+    session.on("error", handleError);
+    session.on("agent_handoff", handleAgentHandoff);
+    session.on("agent_tool_start", historyHandlers.handleAgentToolStart);
+    session.on("agent_tool_end", historyHandlers.handleAgentToolEnd);
+    session.on("history_updated", historyHandlers.handleHistoryUpdated);
+    session.on("history_added", historyHandlers.handleHistoryAdded);
+    session.on("guardrail_tripped", historyHandlers.handleGuardrailTripped);
+    session.on("transport_event", handleTransportEvent);
 
-      // additional transport events
-      sessionRef.current.on("transport_event", handleTransportEvent);
-    }
-  }, [sessionRef.current]);
+    // Cleanup function to remove all listeners
+    return () => {
+      session.off("error", handleError);
+      session.off("agent_handoff", handleAgentHandoff);
+      session.off("agent_tool_start", historyHandlers.handleAgentToolStart);
+      session.off("agent_tool_end", historyHandlers.handleAgentToolEnd);
+      session.off("history_updated", historyHandlers.handleHistoryUpdated);
+      session.off("history_added", historyHandlers.handleHistoryAdded);
+      session.off("guardrail_tripped", historyHandlers.handleGuardrailTripped);
+      session.off("transport_event", handleTransportEvent);
+    };
+  }, [status, logServerEvent, historyHandlers, handleAgentHandoff]);
 
   const connect = useCallback(
     async ({
@@ -115,50 +131,86 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
       audioElement,
       extraContext,
       outputGuardrails,
+      model,
     }: ConnectOptions) => {
-      if (sessionRef.current) return; // already connected
+      // Prevent concurrent connections or connecting when already connected
+      if (sessionRef.current || isConnectingRef.current) return;
 
+      isConnectingRef.current = true;
       updateStatus('CONNECTING');
 
-      const ek = await getEphemeralKey();
-      const rootAgent = initialAgents[0];
+      try {
+        const rootAgent = initialAgents[0];
+        const ek = await getEphemeralKey();
+        console.log(ek)
+        // This lets you use the codec selector in the UI to force narrow-band (8 kHz) codecs to
+        //  simulate how the voice agent sounds over a PSTN/SIP phone call.
+        const codecParam = codecParamRef.current;
+        const audioFormat = audioFormatForCodec(codecParam);
 
-      // This lets you use the codec selector in the UI to force narrow-band (8 kHz) codecs to
-      //  simulate how the voice agent sounds over a PSTN/SIP phone call.
-      const codecParam = codecParamRef.current;
-      const audioFormat = audioFormatForCodec(codecParam);
-
-      sessionRef.current = new RealtimeSession(rootAgent, {
-        transport: new OpenAIRealtimeWebRTC({
-          audioElement,
-          // Set preferred codec before offer creation
-          changePeerConnection: async (pc: RTCPeerConnection) => {
-            applyCodec(pc);
-            return pc;
+        sessionRef.current = new RealtimeSession(rootAgent, {
+          apiKey: ek, // SDK 0.1.9 requires apiKey in constructor
+          transport: new OpenAIRealtimeWebRTC({
+            audioElement,
+            // Set preferred codec before offer creation
+            changePeerConnection: async (pc: RTCPeerConnection) => {
+              applyCodec(pc);
+              return pc;
+            },
+          }),
+          model: model,
+          config: {
+            inputAudioFormat: audioFormat,
+            outputAudioFormat: audioFormat,
+            inputAudioTranscription: {
+              model: 'gpt-4o-mini-transcribe',
+            },
           },
-        }),
-        model: 'gpt-4o-realtime-preview-2025-06-03',
-        config: {
-          inputAudioFormat: audioFormat,
-          outputAudioFormat: audioFormat,
-          inputAudioTranscription: {
-            model: 'gpt-4o-mini-transcribe',
-          },
-        },
-        outputGuardrails: outputGuardrails ?? [],
-        context: extraContext ?? {},
-      });
+          outputGuardrails: outputGuardrails ?? [],
+          context: extraContext ?? {},
+        });
 
-      await sessionRef.current.connect({ apiKey: ek });
-      updateStatus('CONNECTED');
+        await sessionRef.current.connect({
+          apiKey: ek, // SDK 0.1.9 requires apiKey in connect()
+        });
+        updateStatus('CONNECTED');
+        isConnectingRef.current = false;
+
+        // Set up 15-minute session timeout warning (OpenAI Realtime API limit)
+        const SESSION_WARNING_TIME = 14 * 60 * 1000; // 14 minutes
+        sessionTimeoutRef.current = setTimeout(() => {
+          callbacks.onSessionTimeout?.();
+        }, SESSION_WARNING_TIME);
+      } catch (error) {
+        // Clean up on connection failure
+        sessionRef.current = null;
+        isConnectingRef.current = false;
+        updateStatus('DISCONNECTED');
+        throw error;
+      }
     },
-    [callbacks, updateStatus],
+    [callbacks, updateStatus, applyCodec],
   );
 
   const disconnect = useCallback(() => {
-    sessionRef.current?.close();
-    sessionRef.current = null;
-    updateStatus('DISCONNECTED');
+    if (!sessionRef.current) return;
+
+    try {
+      updateStatus('DISCONNECTING');
+
+      // Clear session timeout if exists
+      if (sessionTimeoutRef.current) {
+        clearTimeout(sessionTimeoutRef.current);
+        sessionTimeoutRef.current = null;
+      }
+
+      sessionRef.current.close();
+    } catch (error) {
+      console.error('Error during disconnect:', error);
+    } finally {
+      sessionRef.current = null;
+      updateStatus('DISCONNECTED');
+    }
   }, [updateStatus]);
 
   const assertconnected = () => {
