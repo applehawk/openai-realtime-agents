@@ -65,17 +65,32 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
   };
 
   const updateTranscriptMessage: TranscriptContextValue["updateTranscriptMessage"] = (itemId, newText, append = false) => {
-    setTranscriptItems((prev) =>
-      prev.map((item) => {
+    setTranscriptItems((prev) => {
+      const result = prev.map((item) => {
         if (item.itemId === itemId && item.type === "MESSAGE") {
+          const oldTitle = item.title ?? "";
+          const newTitle = append ? oldTitle + newText : newText;
+
+          console.log("[updateTranscriptMessage]", {
+            itemId,
+            append,
+            oldTitle,
+            oldTitleLength: oldTitle.length,
+            deltaText: newText,
+            deltaLength: newText.length,
+            newTitle,
+            newTitleLength: newTitle.length,
+          });
+
           return {
             ...item,
-            title: append ? (item.title ?? "") + newText : newText,
+            title: newTitle,
           };
         }
         return item;
-      })
-    );
+      });
+      return result;
+    });
   };
 
   const addTranscriptBreadcrumb: TranscriptContextValue["addTranscriptBreadcrumb"] = (title, data) => {

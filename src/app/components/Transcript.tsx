@@ -7,6 +7,7 @@ import Image from "next/image";
 import { useTranscript } from "@/app/contexts/TranscriptContext";
 import { DownloadIcon, ClipboardCopyIcon } from "@radix-ui/react-icons";
 import { GuardrailChip } from "./GuardrailChip";
+import ModelThinkingCloud from "./ModelThinkingCloud";
 
 export interface TranscriptProps {
   userText: string;
@@ -134,31 +135,58 @@ function Transcript({
                 ? title.slice(1, -1)
                 : title;
 
+              // Show thinking cloud for assistant messages that are in progress
+              const isAssistant = !isUser;
+              const isInProgress = item.status === "IN_PROGRESS";
+              const hasText = Boolean(title);
+
+              // Enhanced logging to debug delta accumulation
+              if (isAssistant && isInProgress) {
+                console.log('[Transcript] Assistant IN_PROGRESS:', {
+                  itemId,
+                  hasText,
+                  title,
+                  titleLength: title?.length || 0,
+                  displayTitle,
+                  displayTitleLength: displayTitle?.length || 0,
+                  status: item.status,
+                  willShowInCloud: hasText ? displayTitle : "Processing"
+                });
+              }
+
               return (
                 <div key={itemId} className={containerClasses}>
-                  <div className="max-w-lg">
-                    <div
-                      className={`${bubbleBase} rounded-t-xl ${
-                        guardrailResult ? "" : "rounded-b-xl"
-                      }`}
-                    >
+                  {isAssistant && isInProgress ? (
+                    <ModelThinkingCloud
+                      message={hasText ? displayTitle : "Processing"}
+                      isAnimating={true}
+                      timestamp={timestamp}
+                    />
+                  ) : (
+                    <div className="max-w-lg">
                       <div
-                        className={`text-xs ${
-                          isUser ? "text-gray-400" : "text-gray-500"
-                        } font-mono`}
+                        className={`${bubbleBase} rounded-t-xl ${
+                          guardrailResult ? "" : "rounded-b-xl"
+                        }`}
                       >
-                        {timestamp}
+                        <div
+                          className={`text-xs ${
+                            isUser ? "text-gray-400" : "text-gray-500"
+                          } font-mono`}
+                        >
+                          {timestamp}
+                        </div>
+                        <div className={`whitespace-pre-wrap ${messageStyle}`}>
+                          <ReactMarkdown>{displayTitle}</ReactMarkdown>
+                        </div>
                       </div>
-                      <div className={`whitespace-pre-wrap ${messageStyle}`}>
-                        <ReactMarkdown>{displayTitle}</ReactMarkdown>
-                      </div>
+                      {guardrailResult && (
+                        <div className="bg-gray-200 px-3 py-2 rounded-b-xl">
+                          <GuardrailChip guardrailResult={guardrailResult} />
+                        </div>
+                      )}
                     </div>
-                    {guardrailResult && (
-                      <div className="bg-gray-200 px-3 py-2 rounded-b-xl">
-                        <GuardrailChip guardrailResult={guardrailResult} />
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
               );
             } else if (type === "BREADCRUMB") {

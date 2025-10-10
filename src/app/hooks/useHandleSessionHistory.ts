@@ -98,7 +98,15 @@ export function useHandleSessionHistory() {
         text = "[Transcribing...]";
       }
 
-      // If the guardrail has been tripped, this message is a message that gets sent to the 
+      console.log("[handleHistoryAdded] Creating message:", {
+        itemId,
+        role,
+        initialText: text,
+        textLength: text.length,
+        isAssistant: role === "assistant"
+      });
+
+      // If the guardrail has been tripped, this message is a message that gets sent to the
       // assistant to correct it, so we add it as a breadcrumb instead of a message.
       const guardrailMessage = sketchilyDetectGuardrailMessage(text);
       if (guardrailMessage) {
@@ -115,12 +123,31 @@ export function useHandleSessionHistory() {
     items.forEach((item: any) => {
       if (!item || item.type !== 'message') return;
 
-      const { itemId, content = [] } = item;
+      const { itemId, role, content = [] } = item;
 
       const text = extractMessageText(content);
 
       if (text) {
         updateTranscriptMessage(itemId, text, false);
+      }
+
+      // Mark assistant messages as DONE when they have content
+      if (role === 'assistant' && text) {
+        const transcriptItem = transcriptItems.find((i) => i.itemId === itemId);
+        if (transcriptItem?.status === 'IN_PROGRESS') {
+          updateTranscriptItem(itemId, { status: 'DONE' });
+
+          // If guardrailResult still pending, mark PASS.
+          if (transcriptItem?.guardrailResult?.status === 'IN_PROGRESS') {
+            updateTranscriptItem(itemId, {
+              guardrailResult: {
+                status: 'DONE',
+                category: 'NONE',
+                rationale: '',
+              },
+            });
+          }
+        }
       }
     });
   }
@@ -128,13 +155,41 @@ export function useHandleSessionHistory() {
   function handleTranscriptionDelta(item: any) {
     const itemId = item.item_id;
     const deltaText = item.delta || "";
+
+    console.log("[handleTranscriptionDelta] Delta received:", {
+      itemId,
+      deltaText,
+      deltaLength: deltaText.length,
+      eventType: item.type,
+      fullEvent: item
+    });
+
     if (itemId) {
+      const existingItem = transcriptItems.find((i) => i.itemId === itemId);
+      console.log("[handleTranscriptionDelta] Before update:", {
+        itemId,
+        existingText: existingItem?.title || "(no existing item)",
+        existingTextLength: existingItem?.title?.length || 0,
+        deltaToAppend: deltaText,
+        willAppend: true
+      });
+
       updateTranscriptMessage(itemId, deltaText, true);
+
+      // Log after update to verify accumulation
+      setTimeout(() => {
+        const updatedItem = transcriptItems.find((i) => i.itemId === itemId);
+        console.log("[handleTranscriptionDelta] After update:", {
+          itemId,
+          newText: updatedItem?.title || "(item not found)",
+          newTextLength: updatedItem?.title?.length || 0
+        });
+      }, 10);
     }
   }
 
   function handleTranscriptionCompleted(item: any) {
-    // History updates don't reliably end in a completed item, 
+    // History updates don't reliably end in a completed item,
     // so we need to handle finishing up when the transcription is completed.
     const itemId = item.item_id;
     const finalTranscript =
@@ -158,6 +213,41 @@ export function useHandleSessionHistory() {
         });
       }
     }
+  }
+
+  function handleResponseDone(event: any) {
+    // Handle response.done event which contains the complete assistant response
+    console.log("[handleResponseDone]", event);
+
+    if (!event.response?.output) return;
+
+    event.response.output.forEach((outputItem: any) => {
+      if (outputItem.type === 'message' && outputItem.role === 'assistant') {
+        const itemId = outputItem.id;
+
+        // Extract transcript from content
+        const transcript = outputItem.content
+          ?.find((c: any) => c.type === 'output_audio')
+          ?.transcript;
+
+        if (itemId && transcript) {
+          updateTranscriptMessage(itemId, transcript, false);
+          updateTranscriptItem(itemId, { status: 'DONE' });
+
+          // If guardrailResult still pending, mark PASS.
+          const transcriptItem = transcriptItems.find((i) => i.itemId === itemId);
+          if (transcriptItem?.guardrailResult?.status === 'IN_PROGRESS') {
+            updateTranscriptItem(itemId, {
+              guardrailResult: {
+                status: 'DONE',
+                category: 'NONE',
+                rationale: '',
+              },
+            });
+          }
+        }
+      }
+    });
   }
 
   function handleGuardrailTripped(details: any, _agent: any, guardrail: any) {
@@ -191,6 +281,7 @@ export function useHandleSessionHistory() {
     handleHistoryAdded,
     handleTranscriptionDelta,
     handleTranscriptionCompleted,
+    handleResponseDone,
     handleGuardrailTripped,
   });
 
