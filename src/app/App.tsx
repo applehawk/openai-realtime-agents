@@ -180,25 +180,27 @@ function App() {
 
   const fetchEphemeralKey = async (): Promise<string | null> => {
     logClientEvent({ url: "/session" }, "fetch_session_token_request");
+
     const tokenResponse = await fetch("/api/session");
+    console.log(tokenResponse)
     const data = await tokenResponse.json();
+
     logServerEvent(data, "fetch_session_token_response");
 
-    if (!data.client_secret?.value) {
+    if (!data.value) {
       logClientEvent(data, "error.no_ephemeral_key");
       console.error("No ephemeral key provided by the server");
       setSessionStatus("DISCONNECTED");
       return null;
     }
 
-    return data.client_secret.value;
+    return data.value;
   };
 
   const connectToRealtime = async () => {
     const agentSetKey = searchParams.get("agentConfig") || "default";
     if (sdkScenarioMap[agentSetKey]) {
       if (sessionStatus !== "DISCONNECTED") return;
-      setSessionStatus("CONNECTING");
 
       try {
         const EPHEMERAL_KEY = await fetchEphemeralKey();
@@ -225,6 +227,7 @@ function App() {
           extraContext: {
             addTranscriptBreadcrumb,
           },
+          model: "gpt-realtime",
         });
       } catch (err) {
         console.error("Error connecting via SDK:", err);
@@ -236,7 +239,6 @@ function App() {
 
   const disconnectFromRealtime = () => {
     disconnect();
-    setSessionStatus("DISCONNECTED");
     setIsPTTUserSpeaking(false);
   };
 

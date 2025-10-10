@@ -2,21 +2,33 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
+
+    const sessionConfig = JSON.stringify({
+      session: {
+          type: "realtime",
+          model: "gpt-realtime",
+          audio: {
+              output: { voice: "marin" },
+          },
+      },
+    });
+
     const response = await fetch(
-      "https://api.openai.com/v1/realtime/sessions",
+      "https://api.openai.com/v1/realtime/client_secrets",
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          model: "gpt-4o-realtime-preview-2025-06-03",
-        }),
+        body: sessionConfig,
       }
     );
+
     const data = await response.json();
+    console.log(data.value);
     return NextResponse.json(data);
+
   } catch (error) {
     console.error("Error in /session:", error);
     return NextResponse.json(
