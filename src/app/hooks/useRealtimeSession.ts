@@ -8,6 +8,7 @@ import {
 import { audioFormatForCodec, applyCodecPreferences } from '../lib/codecUtils';
 import { useEvent } from '../contexts/EventContext';
 import { useHandleSessionHistory } from './useHandleSessionHistory';
+import { useMcpToolSession } from './useMcpToolSession';
 import { SessionStatus } from '../types';
 
 export interface RealtimeSessionCallbacks {
@@ -46,9 +47,21 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
   const { logServerEvent } = useEvent();
 
   const historyHandlers = useHandleSessionHistory().current;
+  const mcpHandlers = useMcpToolSession().current;
 
   function handleTransportEvent(event: any) {
     // Handle additional server events that aren't managed by the session
+
+    // Debug: log events that might contain MCP tool info
+    if (event.type?.includes('function_call') || event.type?.includes('item.created')) {
+      console.log('[MCP Tool Debug] Potential MCP event:', event.type, event);
+    }
+
+    // First, try MCP-specific event handlers
+    const mcpHandled = mcpHandlers.handleMcpTransportEvent(event);
+    if (mcpHandled) return;
+
+    // Then handle other event types
     switch (event.type) {
       case "conversation.item.input_audio_transcription.completed": {
         historyHandlers.handleTranscriptionCompleted(event);
@@ -59,13 +72,28 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
         break;
       }
       case "response.audio_transcript.delta": {
+        console.log("[useRealtimeSession] response.audio_transcript.delta event:", event);
         historyHandlers.handleTranscriptionDelta(event);
+        break;
+      }
+      case "response.output_audio_transcript.delta": {
+        console.log("[useRealtimeSession] response.output_audio_transcript.delta event:", event);
+        historyHandlers.handleTranscriptionDelta(event);
+        break;
+      }
+      case "response.output_audio_transcript.done": {
+        console.log("[useRealtimeSession] response.output_audio_transcript.done event:", event);
+        historyHandlers.handleTranscriptionCompleted(event);
+        break;
+      }
+      case "response.done": {
+        historyHandlers.handleResponseDone(event);
         break;
       }
       default: {
         logServerEvent(event);
         break;
-      } 
+      }
     }
   }
 
@@ -111,6 +139,10 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
     session.on("guardrail_tripped", historyHandlers.handleGuardrailTripped);
     session.on("transport_event", handleTransportEvent);
 
+    // Register MCP-specific event listeners
+    session.on("mcp_tools_changed", mcpHandlers.handleMcpToolsChanged);
+    session.on("mcp_tool_call_completed", mcpHandlers.handleMcpToolCallCompleted);
+
     // Cleanup function to remove all listeners
     return () => {
       session.off("error", handleError);
@@ -121,8 +153,12 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
       session.off("history_added", historyHandlers.handleHistoryAdded);
       session.off("guardrail_tripped", historyHandlers.handleGuardrailTripped);
       session.off("transport_event", handleTransportEvent);
+
+      // Remove MCP event listeners
+      session.off("mcp_tools_changed", mcpHandlers.handleMcpToolsChanged);
+      session.off("mcp_tool_call_completed", mcpHandlers.handleMcpToolCallCompleted);
     };
-  }, [status, logServerEvent, historyHandlers, handleAgentHandoff]);
+  }, [status, logServerEvent, historyHandlers, mcpHandlers, handleAgentHandoff]);
 
   const connect = useCallback(
     async ({
