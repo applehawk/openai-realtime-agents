@@ -47,6 +47,14 @@ async function authFetch(endpoint: string, options: RequestInit = {}) {
   const normalizedEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
   const url = `${AUTH_API_BASE}${normalizedEndpoint}`;
 
+  console.log('authFetch:', {
+    endpoint,
+    normalizedEndpoint,
+    AUTH_API_BASE,
+    url,
+    method: options.method || 'GET'
+  });
+
   // For Node.js fetch, we need to handle SSL certificate rejection
   const fetchOptions: RequestInit = {
     ...options,
@@ -63,9 +71,23 @@ async function authFetch(endpoint: string, options: RequestInit = {}) {
     // Set to '0' to disable SSL verification (use with caution)
   }
 
-  const response = await fetch(url, fetchOptions);
-
-  return response;
+  try {
+    const response = await fetch(url, fetchOptions);
+    console.log('authFetch response:', {
+      url,
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries())
+    });
+    return response;
+  } catch (error) {
+    console.error('authFetch error:', {
+      url,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    throw error;
+  }
 }
 
 export const authClient = {
@@ -79,11 +101,30 @@ export const authClient = {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Login failed');
+      const errorText = await response.text();
+      console.error('Login failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText
+      });
+
+      try {
+        const error = JSON.parse(errorText);
+        throw new Error(error.detail || 'Login failed');
+      } catch {
+        throw new Error(`Login failed: ${response.status} ${response.statusText}`);
+      }
     }
 
-    return response.json();
+    const responseText = await response.text();
+    console.log('Login response:', responseText);
+
+    try {
+      return JSON.parse(responseText);
+    } catch (error) {
+      console.error('Failed to parse login response as JSON:', responseText);
+      throw new Error('Invalid JSON response from auth server');
+    }
   },
 
   /**
