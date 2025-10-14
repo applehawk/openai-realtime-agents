@@ -15,8 +15,8 @@ function Events({ isExpanded }: EventsProps) {
   const { loggedEvents, toggleExpand } = useEvent();
 
   const getDirectionArrow = (direction: string) => {
-    if (direction === "client") return { symbol: "▲", color: "#7f5af0" };
-    if (direction === "server") return { symbol: "▼", color: "#2cb67d" };
+    if (direction === "client") return { symbol: "▲", color: "#7f5af0" }; // Purple arrow up - user input events
+    if (direction === "server") return { symbol: "▼", color: "#2cb67d" }; // Green arrow down - system response events
     return { symbol: "•", color: "#555" };
   };
 

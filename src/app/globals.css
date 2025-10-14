@@ -5,6 +5,7 @@
 :root {
   --background: #fafafa;
   --foreground: #171717;
+  --1w: rgb(0, 47, 108); /* White color for SeverstalLogo */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,6 +20,10 @@ body {
   background: var(--background);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+}
+
+.logo {
+  fill: var("--1w")
 }
 
 /* Animations for ModelThinkingCloud component */
