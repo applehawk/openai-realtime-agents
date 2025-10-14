@@ -3,7 +3,7 @@
  * Uses httpOnly cookies for secure token management
  */
 
-const AUTH_API_BASE = process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:8000/api/v1';
+const AUTH_API_BASE = process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/api/v1';
 
 export interface LoginCredentials {
   username: string;
