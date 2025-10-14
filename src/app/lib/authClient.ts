@@ -3,7 +3,7 @@
  * Uses httpOnly cookies for secure token management
  */
 
-const AUTH_API_BASE = process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/api/v1/';
+const AUTH_API_BASE = process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/api/v1';
 
 export interface LoginCredentials {
   username: string;
@@ -36,7 +36,10 @@ export interface GoogleStatusResponse {
  * Make authenticated request to auth server
  */
 async function authFetch(endpoint: string, options: RequestInit = {}) {
-  const url = `${AUTH_API_BASE}${endpoint}`;
+  // Ensure proper URL formatting with single slash between base and endpoint
+  const baseUrl = AUTH_API_BASE.endsWith('/') ? AUTH_API_BASE.slice(0, -1) : AUTH_API_BASE;
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+  const url = `${baseUrl}/${cleanEndpoint}`;
 
   const response = await fetch(url, {
     ...options,
