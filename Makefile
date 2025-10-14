@@ -24,6 +24,9 @@ start:
 lint:
 	npm run lint
 
+updown:
+	git pull && docker compose down && docker compose up --build
+
 test-api-key:
 	@echo "Testing OpenAI API key..."
 	@source .env && curl -s -X POST https://api.openai.com/v1/realtime/client_secrets \
