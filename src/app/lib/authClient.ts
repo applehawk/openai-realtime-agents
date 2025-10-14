@@ -121,7 +121,7 @@ export const authClient = {
 
     try {
       return JSON.parse(responseText);
-    } catch (error) {
+    } catch (_error) {
       console.error('Failed to parse login response as JSON:', responseText);
       throw new Error('Invalid JSON response from auth server');
     }
@@ -170,7 +170,7 @@ export const authClient = {
 
     try {
       return JSON.parse(responseText);
-    } catch (error) {
+    } catch (_error) {
       console.error('Failed to parse getCurrentUser response as JSON:', responseText);
       throw new Error('Invalid JSON response from auth server');
     }
