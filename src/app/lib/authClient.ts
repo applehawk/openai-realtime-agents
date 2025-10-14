@@ -3,7 +3,14 @@
  * Uses httpOnly cookies for secure token management
  */
 
-const AUTH_API_BASE = process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/api/v1/';
+// Normalize the base URL to ensure it ends with a slash
+const normalizeBaseUrl = (url: string): string => {
+  return url.endsWith('/') ? url : `${url}/`;
+};
+
+const AUTH_API_BASE = normalizeBaseUrl(
+  process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/api/v1'
+);
 
 export interface LoginCredentials {
   username: string;
@@ -36,7 +43,9 @@ export interface GoogleStatusResponse {
  * Make authenticated request to auth server
  */
 async function authFetch(endpoint: string, options: RequestInit = {}) {
-  const url = `${AUTH_API_BASE}${endpoint}`;
+  // Remove leading slash from endpoint if present to avoid double slashes
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+  const url = `${AUTH_API_BASE}${normalizedEndpoint}`;
 
   // For Node.js fetch, we need to handle SSL certificate rejection
   const fetchOptions: RequestInit = {
