@@ -1,4 +1,18 @@
 import { NextResponse } from "next/server";
+import { corsHeaders, corsResponse } from '@/app/lib/cors';
+
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 200,
+    headers: corsHeaders(request.headers.get('origin') || undefined),
+  });
+}
+
+export async function POST(request: Request) {
+  // your existing logic
+  const response = NextResponse.json(data);
+  return corsResponse(response, request.headers.get('origin') || undefined);
+}
 
 export async function GET() {
   try {
