@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * Client for interacting with the authentication server API
  * Uses httpOnly cookies for secure token management
