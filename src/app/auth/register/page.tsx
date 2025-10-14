@@ -45,7 +45,7 @@ export default function RegisterPage() {
       setTimeout(() => {
         router.push('/auth/login');
       }, 1500);
-    } catch (err) {
+    } catch (_err) {
       // Error is handled by AuthContext
     } finally {
       setIsLoading(false);
