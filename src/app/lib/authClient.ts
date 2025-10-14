@@ -9,7 +9,7 @@ const normalizeBaseUrl = (url: string): string => {
 };
 
 const AUTH_API_BASE = normalizeBaseUrl(
-  process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/api/v1'
+  process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/api/v1/'
 );
 
 export interface LoginCredentials {
@@ -114,10 +114,25 @@ export const authClient = {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch user info');
+      const errorText = await response.text();
+      console.error('Failed to fetch user info:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText
+      });
+      throw new Error(`Failed to fetch user info: ${response.status} ${response.statusText}`);
     }
 
-    return response.json();
+    // Get the response text first to debug
+    const responseText = await response.text();
+    console.log('getCurrentUser response:', responseText);
+
+    try {
+      return JSON.parse(responseText);
+    } catch (error) {
+      console.error('Failed to parse getCurrentUser response as JSON:', responseText);
+      throw new Error('Invalid JSON response from auth server');
+    }
   },
 
   /**
