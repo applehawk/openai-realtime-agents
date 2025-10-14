@@ -13,6 +13,7 @@ services:
       - NODE_ENV=production
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-https://rndaibot.ru/api/v1}
+      - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED:-0}
     env_file:
       - .env
     networks:

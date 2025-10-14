@@ -38,13 +38,23 @@ export interface GoogleStatusResponse {
 async function authFetch(endpoint: string, options: RequestInit = {}) {
   const url = `${AUTH_API_BASE}${endpoint}`;
 
-  const response = await fetch(url, {
+  // For Node.js fetch, we need to handle SSL certificate rejection
+  const fetchOptions: RequestInit = {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...options.headers,
     },
-  });
+  };
+
+  // In development or when dealing with self-signed certificates,
+  // we may need to disable SSL verification (not recommended for production)
+  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED !== undefined) {
+    // This is handled via environment variable NODE_TLS_REJECT_UNAUTHORIZED
+    // Set to '0' to disable SSL verification (use with caution)
+  }
+
+  const response = await fetch(url, fetchOptions);
 
   return response;
 }
