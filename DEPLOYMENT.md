@@ -1,24 +1,107 @@
 # Deployment Guide
 
-This guide explains how to deploy the OpenAI Realtime Agents application using Docker and nginx on your server.
+This guide explains how to deploy the OpenAI Realtime Agents application from GitHub to your server using Docker and nginx.
 
 ## Server Information
 
+- **GitHub Repository**: git@github.com:applehawk/openai-realtime-agents.git
 - **Domain**: https://rndaibot.ru/
 - **Server IP**: 79.132.139.57
 - **Application Port**: 3000
 
-## Prerequisites
+## Quick Start (Automated Deployment)
+
+The easiest way to deploy is using the provided automation scripts:
+
+### Step 1: Setup Server (One-time setup)
+
+SSH into your server and run the setup script:
+
+```bash
+ssh root@79.132.139.57
+wget https://raw.githubusercontent.com/applehawk/openai-realtime-agents/main/setup-server.sh
+chmod +x setup-server.sh
+sudo ./setup-server.sh
+```
+
+This script will:
+- Install Docker and Docker Compose
+- Install Nginx
+- Install Certbot for SSL certificates
+- Configure firewall
+- Generate SSH key for GitHub access
+
+**Important**: After the script completes, add the generated SSH key to your GitHub repository:
+1. Copy the public key shown in the terminal
+2. Go to https://github.com/applehawk/openai-realtime-agents/settings/keys
+3. Click "Add deploy key" and paste the key
+
+### Step 2: Deploy Application
+
+From your **local machine**, run the deployment script:
+
+```bash
+cd /path/to/local/repo
+./deploy.sh
+```
+
+This script will:
+- Clone/update the repository on the server
+- Build the Docker image
+- Start the application
+- Verify the deployment
+
+The script will prompt you to configure the `.env` file with your `OPENAI_API_KEY` if it's not already set.
+
+### Step 3: Configure Nginx and SSL
+
+SSH into your server and configure nginx:
+
+```bash
+ssh root@79.132.139.57
+
+# Copy nginx configuration
+cd /opt/openai-realtime-agents
+cp nginx.conf.example /etc/nginx/sites-available/rndaibot.ru
+ln -s /etc/nginx/sites-available/rndaibot.ru /etc/nginx/sites-enabled/
+
+# Get SSL certificate
+certbot certonly --nginx -d rndaibot.ru -d www.rndaibot.ru
+
+# Test and reload nginx
+nginx -t
+systemctl reload nginx
+```
+
+Your application will now be available at https://rndaibot.ru/
+
+## Manual Setup Instructions
+
+If you prefer to set up manually, follow these steps:
+
+### Prerequisites
 
 On your server, you need:
 - Docker (version 20.10+)
 - Docker Compose (version 2.0+)
 - Nginx
 - SSL certificate (Let's Encrypt recommended)
+- SSH key added to GitHub for repository access
 
-## Setup Instructions
+## Manual Setup Instructions
 
-### 1. Prepare Environment Variables
+### 1. Clone Repository on Server
+
+SSH into your server and clone the repository:
+
+```bash
+ssh root@79.132.139.57
+mkdir -p /opt/openai-realtime-agents
+cd /opt/openai-realtime-agents
+git clone git@github.com:applehawk/openai-realtime-agents.git .
+```
+
+### 2. Prepare Environment Variables
 
 Copy the sample environment file and configure it:
 
@@ -31,7 +114,7 @@ Update the following variables in `.env`:
 - `OPENAI_API_KEY`: Your OpenAI API key
 - `NEXT_PUBLIC_AUTH_API_URL`: Your auth API URL (currently: http://79.132.139.57:7000/api/v1)
 
-### 2. Build and Run with Docker
+### 3. Build and Run with Docker
 
 Build the Docker image:
 ```bash
@@ -53,7 +136,7 @@ Stop the application:
 docker-compose down
 ```
 
-### 3. Configure Nginx
+### 4. Configure Nginx
 
 #### Install Nginx (if not already installed)
 ```bash
@@ -93,7 +176,7 @@ Reload nginx:
 sudo systemctl reload nginx
 ```
 
-### 4. Verify Deployment
+### 5. Verify Deployment
 
 Check if the application is running:
 ```bash
@@ -136,13 +219,27 @@ docker-compose down -v
 
 ## Updating the Application
 
-1. Pull the latest code:
+### Using the Deployment Script (Recommended)
+
+From your local machine, simply run:
 ```bash
-git pull origin main
+./deploy.sh
 ```
 
-2. Rebuild and restart:
+The script will automatically pull the latest changes and redeploy.
+
+### Manual Update
+
+SSH into the server and run:
+
 ```bash
+ssh root@79.132.139.57
+cd /opt/openai-realtime-agents
+
+# Pull latest code
+git pull origin main
+
+# Rebuild and restart
 docker-compose down
 docker-compose build
 docker-compose up -d
