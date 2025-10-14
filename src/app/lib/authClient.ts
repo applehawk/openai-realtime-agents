@@ -54,7 +54,7 @@ export const authClient = {
    * Login user
    */
   async login(credentials: LoginCredentials): Promise<TokenResponse> {
-    const response = await authFetch('/auth/login', {
+    const response = await authFetch('auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
@@ -71,7 +71,7 @@ export const authClient = {
    * Register new user
    */
   async register(data: RegisterData): Promise<{ message: string }> {
-    const response = await authFetch('/auth/register', {
+    const response = await authFetch('auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -88,7 +88,7 @@ export const authClient = {
    * Get current user info
    */
   async getCurrentUser(accessToken: string) {
-    const response = await authFetch('/auth/me', {
+    const response = await authFetch('auth/me', {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },
@@ -105,7 +105,7 @@ export const authClient = {
    * Refresh access token
    */
   async refreshToken(refreshToken: string): Promise<TokenResponse> {
-    const response = await authFetch('/auth/refresh', {
+    const response = await authFetch('auth/refresh', {
       method: 'POST',
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
@@ -121,7 +121,7 @@ export const authClient = {
    * Logout user
    */
   async logout(refreshToken: string): Promise<void> {
-    await authFetch('/auth/logout', {
+    await authFetch('auth/logout', {
       method: 'POST',
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
@@ -131,7 +131,7 @@ export const authClient = {
    * Get Google OAuth URL
    */
   async getGoogleAuthUrl(accessToken: string): Promise<GoogleAuthUrlResponse> {
-    const response = await authFetch('/google/auth/url', {
+    const response = await authFetch('google/auth/url', {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },
@@ -149,7 +149,7 @@ export const authClient = {
    * Handle Google OAuth callback
    */
   async handleGoogleCallback(code: string, state: string, accessToken: string) {
-    const response = await authFetch(`/google/auth/callback?code=${code}&state=${state}`, {
+    const response = await authFetch(`google/auth/callback?code=${code}&state=${state}`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },
@@ -166,7 +166,7 @@ export const authClient = {
    * Get Google integration status
    */
   async getGoogleStatus(accessToken: string): Promise<GoogleStatusResponse> {
-    const response = await authFetch('/google/status', {
+    const response = await authFetch('google/status', {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },
@@ -183,7 +183,7 @@ export const authClient = {
    * Disconnect all Google services
    */
   async disconnectGoogle(accessToken: string): Promise<void> {
-    const response = await authFetch('/google/disconnect/all', {
+    const response = await authFetch('google/disconnect/all', {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
