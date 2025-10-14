@@ -319,23 +319,23 @@ function App() {
     }
   };
 
-  const handleAgentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newAgentConfig = e.target.value;
-    const url = new URL(window.location.toString());
-    url.searchParams.set("agentConfig", newAgentConfig);
-    window.location.replace(url.toString());
-  };
+  // const _handleAgentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  //   const newAgentConfig = e.target.value;
+  //   const url = new URL(window.location.toString());
+  //   url.searchParams.set("agentConfig", newAgentConfig);
+  //   window.location.replace(url.toString());
+  // };
 
-  const handleSelectedAgentChange = (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const newAgentName = e.target.value;
-    // Reconnect session with the newly selected agent as root so that tool
-    // execution works correctly.
-    disconnectFromRealtime();
-    setSelectedAgentName(newAgentName);
-    // connectToRealtime will be triggered by effect watching selectedAgentName
-  };
+  // const _handleSelectedAgentChange = (
+  //   e: React.ChangeEvent<HTMLSelectElement>
+  // ) => {
+  //   const newAgentName = e.target.value;
+  //   // Reconnect session with the newly selected agent as root so that tool
+  //   // execution works correctly.
+  //   disconnectFromRealtime();
+  //   setSelectedAgentName(newAgentName);
+  //   // connectToRealtime will be triggered by effect watching selectedAgentName
+  // };
 
   // Because we need a new connection, refresh the page when codec changes
   const handleCodecChange = (newCodec: string) => {
