@@ -115,28 +115,37 @@ When you need to call tools, structure your response to indicate what tools shou
  * Fetches a response from the GPT-5 supervisor model via the Responses API
  */
 async function fetchSupervisorResponse(body: any) {
+  console.log('[supervisorAgent] fetchSupervisorResponse called');
+  console.log('[supervisorAgent] Request body:', JSON.stringify(body, null, 2));
+
   try {
+    const requestPayload = {
+      ...body,
+      parallel_tool_calls: false,
+      model: 'gpt-5' // Use GPT-5 for supervisor
+    };
+    console.log('[supervisorAgent] Sending request to /api/responses with model:', requestPayload.model);
+
     const response = await fetch('/api/responses', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        ...body,
-        parallel_tool_calls: false,
-        model: 'gpt-5' // Use GPT-5 for supervisor
-      }),
+      body: JSON.stringify(requestPayload),
     });
 
+    console.log('[supervisorAgent] Response status:', response.status, response.statusText);
+
     if (!response.ok) {
-      console.warn('Supervisor API returned an error:', response);
+      console.warn('[supervisorAgent] Supervisor API returned an error:', response);
       return { error: 'Supervisor agent unavailable.' };
     }
 
     const completion = await response.json();
+    console.log('[supervisorAgent] Received completion:', JSON.stringify(completion, null, 2));
     return completion;
   } catch (error) {
-    console.error('Error fetching supervisor response:', error);
+    console.error('[supervisorAgent] Error fetching supervisor response:', error);
     return { error: 'Network error contacting supervisor.' };
   }
 }
@@ -151,10 +160,18 @@ async function handleSupervisorToolCalls(
   response: any,
   addBreadcrumb?: (title: string, data?: any) => void,
 ): Promise<SupervisorResponse> {
+  console.log('[supervisorAgent] handleSupervisorToolCalls called');
+  console.log('[supervisorAgent] Initial response:', JSON.stringify(response, null, 2));
+
   let currentResponse = response;
+  let iterationCount = 0;
 
   while (true) {
+    iterationCount++;
+    console.log(`[supervisorAgent] Tool call handling iteration #${iterationCount}`);
+
     if (currentResponse?.error) {
+      console.log('[supervisorAgent] Response contains error:', currentResponse.error);
       return {
         decision: 'reject',
         reasoning: 'Supervisor encountered an error',
@@ -163,11 +180,17 @@ async function handleSupervisorToolCalls(
     }
 
     const outputItems: any[] = currentResponse.output ?? [];
+    console.log(`[supervisorAgent] Output items count: ${outputItems.length}`);
+    console.log('[supervisorAgent] Output items:', JSON.stringify(outputItems, null, 2));
+
     const functionCalls = outputItems.filter((item) => item.type === 'function_call');
+    console.log(`[supervisorAgent] Function calls found: ${functionCalls.length}`);
 
     if (functionCalls.length === 0) {
+      console.log('[supervisorAgent] No function calls, extracting final response');
       // No more function calls – extract the supervisor's decision
       const assistantMessages = outputItems.filter((item) => item.type === 'message');
+      console.log(`[supervisorAgent] Assistant messages count: ${assistantMessages.length}`);
 
       const finalText = assistantMessages
         .map((msg: any) => {
@@ -179,12 +202,16 @@ async function handleSupervisorToolCalls(
         })
         .join('\n');
 
+      console.log('[supervisorAgent] Final text to parse:', finalText);
+
       // Parse the JSON response from supervisor
       try {
         const supervisorResponse: SupervisorResponse = JSON.parse(finalText);
+        console.log('[supervisorAgent] Parsed supervisor response:', JSON.stringify(supervisorResponse, null, 2));
         return supervisorResponse;
       } catch (parseError) {
-        console.error('Failed to parse supervisor response:', finalText);
+        console.error('[supervisorAgent] Failed to parse supervisor response:', finalText);
+        console.error('[supervisorAgent] Parse error:', parseError);
         return {
           decision: 'reject',
           reasoning: 'Invalid supervisor response format',
@@ -195,9 +222,11 @@ async function handleSupervisorToolCalls(
 
     // Handle any tool calls from the supervisor
     // For severstal assistant, tools are mainly via MCP, so this is for coordination
+    console.log('[supervisorAgent] Processing function calls');
     for (const toolCall of functionCalls) {
       const fName = toolCall.name;
       const args = JSON.parse(toolCall.arguments || '{}');
+      console.log(`[supervisorAgent] Processing tool call: ${fName}`, args);
 
       if (addBreadcrumb) {
         addBreadcrumb(`[supervisorAgent] function call: ${fName}`, args);
@@ -209,6 +238,8 @@ async function handleSupervisorToolCalls(
         status: 'delegated',
         message: 'Tool execution delegated to primary agent via MCP',
       };
+
+      console.log(`[supervisorAgent] Tool result for ${fName}:`, toolResult);
 
       if (addBreadcrumb) {
         addBreadcrumb(`[supervisorAgent] function call result: ${fName}`, toolResult);
@@ -229,6 +260,7 @@ async function handleSupervisorToolCalls(
       );
     }
 
+    console.log('[supervisorAgent] Fetching next supervisor response');
     currentResponse = await fetchSupervisorResponse(body);
   }
 }
@@ -245,6 +277,11 @@ export function shouldDelegateToSupervisor(context: {
   conversationHistory: RealtimeItem[];
   availableTools: string[];
 }): boolean {
+  console.log('[supervisorAgent] shouldDelegateToSupervisor called');
+  console.log('[supervisorAgent] User message:', context.userMessage);
+  console.log('[supervisorAgent] Conversation history length:', context.conversationHistory.length);
+  console.log('[supervisorAgent] Available tools:', context.availableTools);
+
   const message = context.userMessage.toLowerCase();
   const historyLength = context.conversationHistory.length;
 
@@ -260,6 +297,7 @@ export function shouldDelegateToSupervisor(context: {
     'найди и', // find and
   ];
   const hasMultiStepPattern = multiStepIndicators.some(indicator => message.includes(indicator));
+  console.log('[supervisorAgent] Heuristic 1 - hasMultiStepPattern:', hasMultiStepPattern);
 
   // Heuristic 2: Ambiguous temporal references requiring interpretation
   // Examples: "next available time", "when I'm free", "soon"
@@ -272,6 +310,7 @@ export function shouldDelegateToSupervisor(context: {
     'как можно быстрее', // as soon as possible
   ];
   const hasAmbiguousTime = ambiguousTimeIndicators.some(indicator => message.includes(indicator));
+  console.log('[supervisorAgent] Heuristic 2 - hasAmbiguousTime:', hasAmbiguousTime);
 
   // Heuristic 3: Bulk operations or filtering with conditions
   // Examples: "all emails from last week about project X"
@@ -284,6 +323,7 @@ export function shouldDelegateToSupervisor(context: {
     'содержащие', // containing
   ];
   const hasBulkOperation = bulkOrFilterIndicators.some(indicator => message.includes(indicator));
+  console.log('[supervisorAgent] Heuristic 3 - hasBulkOperation:', hasBulkOperation);
 
   // Heuristic 4: Requests requiring data synthesis or summarization
   // Examples: "summarize my meetings this week and suggest priorities"
@@ -296,6 +336,7 @@ export function shouldDelegateToSupervisor(context: {
     'что важнее', // what's more important
   ];
   const requiresSynthesis = synthesisIndicators.some(indicator => message.includes(indicator));
+  console.log('[supervisorAgent] Heuristic 4 - requiresSynthesis:', requiresSynthesis);
 
   // Heuristic 5: Error recovery or complex conversation context
   // If the conversation has many turns without resolution, escalate to supervisor
@@ -307,6 +348,7 @@ export function shouldDelegateToSupervisor(context: {
       const content = item.content?.[0]?.text || '';
       return content.includes('?') || content.includes('уточните');
     });
+  console.log('[supervisorAgent] Heuristic 5 - isLongConversation:', isLongConversation, 'hasRepeatedClarifications:', hasRepeatedClarifications);
 
   // Heuristic 6: Explicit complexity keywords
   const complexityIndicators = [
@@ -317,6 +359,7 @@ export function shouldDelegateToSupervisor(context: {
     'спланируй', // plan
   ];
   const hasComplexityKeyword = complexityIndicators.some(indicator => message.includes(indicator));
+  console.log('[supervisorAgent] Heuristic 6 - hasComplexityKeyword:', hasComplexityKeyword);
 
   // Heuristic 7: Simple single-tool operations (should NOT delegate)
   const simpleSingleToolIndicators = [
@@ -326,6 +369,7 @@ export function shouldDelegateToSupervisor(context: {
     'когда встреча с', // when is meeting with
   ];
   const isSimpleSingleTool = simpleSingleToolIndicators.some(indicator => message.includes(indicator));
+  console.log('[supervisorAgent] Heuristic 7 - isSimpleSingleTool:', isSimpleSingleTool);
 
   // Decision logic: delegate if multiple heuristics suggest complexity
   const complexityScore = [
@@ -337,13 +381,18 @@ export function shouldDelegateToSupervisor(context: {
     hasComplexityKeyword,
   ].filter(Boolean).length;
 
+  console.log('[supervisorAgent] Complexity score:', complexityScore);
+
   // Don't delegate simple operations even if other heuristics match
   if (isSimpleSingleTool && complexityScore <= 1) {
+    console.log('[supervisorAgent] Decision: DO NOT delegate (simple single-tool operation)');
     return false;
   }
 
   // Delegate if complexity score is 2 or higher
-  return complexityScore >= 2;
+  const shouldDelegate = complexityScore >= 2;
+  console.log('[supervisorAgent] Decision:', shouldDelegate ? 'DELEGATE to supervisor' : 'DO NOT delegate');
+  return shouldDelegate;
 }
 
 /**
@@ -386,6 +435,10 @@ export const delegateToSupervisor = tool({
     additionalProperties: false,
   },
   execute: async (input, details) => {
+    console.log('[supervisorAgent] delegateToSupervisor tool execute called');
+    console.log('[supervisorAgent] Input:', JSON.stringify(input, null, 2));
+    console.log('[supervisorAgent] Details context:', details?.context);
+
     const { conversationContext, proposedPlan, userIntent, complexity } = input as {
       conversationContext: string;
       proposedPlan: string;
@@ -393,11 +446,19 @@ export const delegateToSupervisor = tool({
       complexity: 'high' | 'medium' | 'low';
     };
 
+    console.log('[supervisorAgent] Extracted parameters:', {
+      conversationContext,
+      proposedPlan,
+      userIntent,
+      complexity,
+    });
+
     const addBreadcrumb = (details?.context as any)?.addTranscriptBreadcrumb as
       | ((title: string, data?: any) => void)
       | undefined;
 
     const history: RealtimeItem[] = (details?.context as any)?.history ?? [];
+    console.log('[supervisorAgent] History length:', history.length);
 
     // Build the request to the supervisor
     const supervisorRequest: SupervisorRequest = {
@@ -409,6 +470,8 @@ export const delegateToSupervisor = tool({
         requiresMultipleTools: complexity !== 'low',
       },
     };
+
+    console.log('[supervisorAgent] Supervisor request built:', JSON.stringify(supervisorRequest, null, 2));
 
     if (addBreadcrumb) {
       addBreadcrumb('[Supervisor] Request sent', supervisorRequest);
@@ -438,9 +501,14 @@ Please analyze this request and provide a JSON response with your decision (appr
       tools: [], // Supervisor doesn't directly call tools; it provides guidance
     };
 
+    console.log('[supervisorAgent] API request body prepared');
+
     // Get response from supervisor
+    console.log('[supervisorAgent] Calling fetchSupervisorResponse');
     const response = await fetchSupervisorResponse(body);
+
     if (response.error) {
+      console.error('[supervisorAgent] Response contains error:', response.error);
       return {
         error: response.error,
         fallbackResponse: 'Извините, не могу обработать этот запрос. Попробуйте попроще?',
@@ -448,18 +516,24 @@ Please analyze this request and provide a JSON response with your decision (appr
     }
 
     // Handle any tool coordination from supervisor
+    console.log('[supervisorAgent] Calling handleSupervisorToolCalls');
     const supervisorDecision = await handleSupervisorToolCalls(body, response, addBreadcrumb);
+
+    console.log('[supervisorAgent] Supervisor decision received:', JSON.stringify(supervisorDecision, null, 2));
 
     if (addBreadcrumb) {
       addBreadcrumb('[Supervisor] Decision received', supervisorDecision);
     }
 
     // Return the supervisor's guidance to the primary agent
-    return {
+    const result = {
       decision: supervisorDecision.decision,
       reasoning: supervisorDecision.reasoning,
       suggestedChanges: supervisorDecision.suggestedChanges,
       nextResponse: supervisorDecision.nextResponse,
     };
+
+    console.log('[supervisorAgent] Returning result to primary agent:', JSON.stringify(result, null, 2));
+    return result;
   },
 });
