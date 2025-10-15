@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * Client for interacting with the authentication server API
  * Uses httpOnly cookies for secure token management
@@ -10,7 +9,7 @@ const normalizeBaseUrl = (url: string): string => {
 };
 
 const AUTH_API_BASE = normalizeBaseUrl(
-  process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/api/v1/'
+  process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/apib/v1/'
 );
 
 export interface LoginCredentials {
@@ -65,11 +64,11 @@ async function authFetch(endpoint: string, options: RequestInit = {}) {
     },
   };
 
-  // In development or when dealing with self-signed certificates,
-  // we may need to disable SSL verification (not recommended for production)
-  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED !== undefined) {
-    // This is handled via environment variable NODE_TLS_REJECT_UNAUTHORIZED
-    // Set to '0' to disable SSL verification (use with caution)
+  // In development, disable SSL verification for self-signed certificates
+  // Save the current value so we can restore it
+  const originalTlsReject = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  if (process.env.NODE_ENV === 'development' && typeof window === 'undefined') {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   }
 
   try {
@@ -88,6 +87,15 @@ async function authFetch(endpoint: string, options: RequestInit = {}) {
       stack: error instanceof Error ? error.stack : undefined
     });
     throw error;
+  } finally {
+    // Restore the original TLS setting
+    if (process.env.NODE_ENV === 'development' && typeof window === 'undefined') {
+      if (originalTlsReject !== undefined) {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalTlsReject;
+      } else {
+        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      }
+    }
   }
 }
 

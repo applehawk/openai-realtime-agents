@@ -45,6 +45,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = await response.json();
         setUser(userData);
       } else {
+        // 401 is expected when not authenticated - no need to log
+        if (response.status !== 401) {
+          console.error('Auth check failed:', response.status, response.statusText);
+        }
         setUser(null);
       }
     } catch (err) {
@@ -130,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setUser(null);
       setLoading(false);
-      router.push('/api/auth/login');
+      router.push('/auth/login');
     }
   };
 

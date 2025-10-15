@@ -7,15 +7,17 @@ export function middleware(request: NextRequest) {
 
   const response = NextResponse.next();
 
-  if (allowedOrigins.includes(origin)) {
+  // Only apply CORS headers if there's an origin and it's in the allowed list
+  // For same-origin requests (like localhost to localhost), origin will be undefined
+  if (origin && allowedOrigins.length > 0 && allowedOrigins.includes(origin)) {
     response.headers.set('Access-Control-Allow-Origin', origin);
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
   }
-  
-  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  response.headers.set('Access-Control-Allow-Credentials', 'true');
 
-  if (request.method === 'OPTIONS') {
+  // Handle preflight requests
+  if (request.method === 'OPTIONS' && origin && allowedOrigins.includes(origin)) {
     return new Response(null, { status: 200, headers: response.headers });
   }
 
