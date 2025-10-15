@@ -11,12 +11,6 @@ export const supervisorMcpTools = [
     server_label: 'calendar',
     server_url: 'https://rndaibot.app.n8n.cloud/mcp/google_my_account',
   },
-  // RAG MCP for knowledge base queries
-  {
-    type: 'mcp',
-    server_label: 'RAG',
-    server_url: 'http://79.132.139.57:9621/',
-  },
 ];
 
 /**
@@ -42,7 +36,7 @@ export interface SupervisorResponse {
 }
 
 /**
- * Instructions for the GPT-5 supervisor agent that handles complex tasks
+ * Instructions for the GPT-4o supervisor agent that handles complex tasks
  * for the severstalAssistant (Russian-language email/calendar assistant).
  */
 export const supervisorAgentInstructions = `
@@ -148,7 +142,7 @@ The assistant should ensure:
 `;
 
 /**
- * Fetches a response from the GPT-5 supervisor model via the Responses API
+ * Fetches a response from the GPT-4o supervisor model via the Responses API
  */
 async function fetchSupervisorResponse(body: any) {
   console.log('[supervisorAgent] fetchSupervisorResponse called');
@@ -158,7 +152,7 @@ async function fetchSupervisorResponse(body: any) {
     const requestPayload = {
       ...body,
       parallel_tool_calls: false,
-      model: 'gpt-5' // Use GPT-5 for supervisor
+      model: 'gpt-4o' // Use GPT-4o for supervisor (gpt-5 not yet available)
     };
     console.log('[supervisorAgent] Sending request to /api/responses with model:', requestPayload.model);
 
@@ -330,7 +324,7 @@ async function handleSupervisorToolCalls(
  *
  * This uses prompt-level analysis to decide between:
  * - Simple tasks: handled by primary agent with direct MCP tool calls
- * - Complex tasks: delegated to GPT-5 supervisor for multi-step reasoning
+ * - Complex tasks: delegated to GPT-4o supervisor for multi-step reasoning
  */
 export function shouldDelegateToSupervisor(context: {
   userMessage: string;
@@ -456,7 +450,7 @@ export function shouldDelegateToSupervisor(context: {
 }
 
 /**
- * Tool that delegates complex requests to the GPT-5 supervisor agent
+ * Tool that delegates complex requests to the GPT-4o supervisor agent
  *
  * This tool is called by the primary severstalAssistant when it determines
  * a request is too complex for direct tool execution and requires multi-step
@@ -465,7 +459,7 @@ export function shouldDelegateToSupervisor(context: {
 export const delegateToSupervisor = tool({
   name: 'delegateToSupervisor',
   description:
-    'Delegates complex tasks to a highly intelligent GPT-5 supervisor agent that can handle multi-step operations, conditional logic, and ambiguous requests requiring contextual understanding. Use this for tasks that require more than one tool call or sophisticated reasoning.',
+    'Delegates complex tasks to a highly intelligent GPT-4o supervisor agent that can handle multi-step operations, conditional logic, and ambiguous requests requiring contextual understanding. Use this for tasks that require more than one tool call or sophisticated reasoning.',
   parameters: {
     type: 'object',
     properties: {
@@ -539,7 +533,7 @@ export const delegateToSupervisor = tool({
 
     // Prepare the API request body with MCP tools
     const body: any = {
-      model: 'gpt-5',
+      model: 'gpt-4o',
       input: [
         {
           type: 'message',
