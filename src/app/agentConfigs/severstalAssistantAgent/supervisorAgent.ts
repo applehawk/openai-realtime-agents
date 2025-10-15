@@ -1,4 +1,21 @@
 import { RealtimeItem, tool } from '@openai/agents/realtime';
+import { hostedMcpTool } from '@openai/agents';
+
+/**
+ * MCP Server tools available to the supervisor agent
+ */
+export const supervisorMcpTools = [
+  // Calendar MCP for email and calendar operations
+  hostedMcpTool({
+    serverLabel: 'calendar',
+    serverUrl: 'https://rndaibot.app.n8n.cloud/mcp/google_my_account',
+  }),
+  // RAG MCP for knowledge base queries
+  hostedMcpTool({
+    serverLabel: 'RAG',
+    serverUrl: '79.132.139.57:9621',
+  }),
+];
 
 /**
  * Types for supervisor agent decision-making
@@ -103,12 +120,11 @@ Response: {"decision": "reject", "reasoning": "Destructive bulk operation requir
 ALL nextResponse content must be in Russian, matching the primary agent's language.
 
 # Tool Availability
-You have access to the same calendar MCP server tools as the primary agent:
-- Email operations: read, search, draft, send, organize
-- Calendar operations: check availability, create events, update, set reminders
-- These are exposed via the hosted MCP tool at the calendar server
+You have access to the following MCP server tools:
+- **Calendar MCP**: Email operations (read, search, draft, send, organize) and calendar operations (check availability, create events, update, set reminders)
+- **RAG MCP**: Knowledge base queries for retrieving relevant information from documents and past interactions
 
-When you need to call tools, structure your response to indicate what tools should be called and with what parameters.
+When you need to call tools, structure your response to indicate what tools should be called and with what parameters. Use the RAG tool to augment your decision-making with relevant contextual information.
 `;
 
 /**
@@ -220,8 +236,7 @@ async function handleSupervisorToolCalls(
       }
     }
 
-    // Handle any tool calls from the supervisor
-    // For severstal assistant, tools are mainly via MCP, so this is for coordination
+    // Handle any tool calls from the supervisor (including RAG and calendar MCP tools)
     console.log('[supervisorAgent] Processing function calls');
     for (const toolCall of functionCalls) {
       const fName = toolCall.name;
@@ -232,12 +247,37 @@ async function handleSupervisorToolCalls(
         addBreadcrumb(`[supervisorAgent] function call: ${fName}`, args);
       }
 
-      // In this implementation, tool execution is delegated to the primary agent
-      // The supervisor provides guidance on which tools to call
-      const toolResult = {
-        status: 'delegated',
-        message: 'Tool execution delegated to primary agent via MCP',
-      };
+      // Execute MCP tools directly through the supervisor
+      // The MCP tools (calendar and RAG) are available and can be called
+      let toolResult: any;
+
+      try {
+        // Find the matching MCP tool and execute it
+        const mcpTool = supervisorMcpTools.find((t: any) => {
+          // Check if this tool matches the function call
+          // MCP tools expose their methods through the serverLabel
+          return t && typeof t === 'object' && 'execute' in t;
+        });
+
+        if (mcpTool && typeof (mcpTool as any).execute === 'function') {
+          // Execute the MCP tool
+          console.log(`[supervisorAgent] Executing MCP tool: ${fName}`);
+          toolResult = await (mcpTool as any).execute(args);
+        } else {
+          // Tool not found or not executable
+          console.warn(`[supervisorAgent] Tool ${fName} not found in MCP tools, delegating to primary agent`);
+          toolResult = {
+            status: 'delegated',
+            message: 'Tool execution delegated to primary agent via MCP',
+          };
+        }
+      } catch (error) {
+        console.error(`[supervisorAgent] Error executing tool ${fName}:`, error);
+        toolResult = {
+          status: 'error',
+          message: `Error executing tool: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
 
       console.log(`[supervisorAgent] Tool result for ${fName}:`, toolResult);
 
@@ -477,7 +517,7 @@ export const delegateToSupervisor = tool({
       addBreadcrumb('[Supervisor] Request sent', supervisorRequest);
     }
 
-    // Prepare the API request body
+    // Prepare the API request body with MCP tools for knowledge augmentation
     const body: any = {
       model: 'gpt-5',
       input: [
@@ -498,7 +538,7 @@ ${JSON.stringify(supervisorRequest, null, 2)}
 Please analyze this request and provide a JSON response with your decision (approve/modify/reject/delegateBack), reasoning, and any suggested changes or nextResponse text in Russian.`,
         },
       ],
-      tools: [], // Supervisor doesn't directly call tools; it provides guidance
+      tools: supervisorMcpTools, // MCP tools for calendar operations and RAG knowledge queries
     };
 
     console.log('[supervisorAgent] API request body prepared');
