@@ -112,13 +112,17 @@ When executing operations, the assistant should:
 - Structure tool calls clearly with explicit parameters
 
 ## Response Format Requirements
-The assistant should return valid JSON containing:
+CRITICAL: The assistant MUST return ONLY a valid JSON object with NO additional text, explanations, or commentary before or after the JSON.
+
+The JSON response must contain:
 {
   "decision": "approve|modify|reject|delegateBack",
   "reasoning": "Brief 1-2 sentence explanation of decision",
   "suggestedChanges": "Specific modifications needed (only for 'modify' decision)",
   "nextResponse": "Russian-language text for primary agent to speak to user (when applicable)"
 }
+
+IMPORTANT: Do NOT add any introductory text like "Here is my analysis:" or "Based on the request:". Return ONLY the JSON object.
 
 ## Language Requirement
 The assistant should ensure ALL nextResponse content is in natural, conversational Russian that the primary agent can speak directly to the user without modification.
@@ -233,18 +237,60 @@ async function handleSupervisorToolCalls(
         .join('\n');
 
       console.log('[supervisorAgent] Final text to parse:', finalText);
+      console.log('[supervisorAgent] Final text length:', finalText.length);
+      console.log('[supervisorAgent] Final text (first 500 chars):', finalText.substring(0, 500));
+
+      // Check if response is empty or only whitespace
+      if (!finalText || finalText.trim().length === 0) {
+        console.error('[supervisorAgent] Supervisor returned empty response');
+        return {
+          decision: 'reject',
+          reasoning: 'Supervisor returned empty response',
+          nextResponse: 'Извините, не удалось обработать запрос.',
+        };
+      }
 
       // Parse the JSON response from supervisor
       try {
-        const supervisorResponse: SupervisorResponse = JSON.parse(finalText);
+        // Try to extract JSON from the response text (in case supervisor adds explanatory text)
+        let jsonText = finalText.trim();
+
+        // Look for JSON object in the response (greedy match to get the complete object)
+        const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          jsonText = jsonMatch[0];
+          console.log('[supervisorAgent] Extracted JSON from response (length:', jsonText.length, ')');
+          console.log('[supervisorAgent] Extracted JSON (first 300 chars):', jsonText.substring(0, 300));
+        } else {
+          console.error('[supervisorAgent] No JSON object found in response');
+          console.error('[supervisorAgent] Full response:', finalText);
+        }
+
+        const supervisorResponse: SupervisorResponse = JSON.parse(jsonText);
         console.log('[supervisorAgent] Parsed supervisor response:', JSON.stringify(supervisorResponse, null, 2));
+
+        // Validate that required fields are present
+        if (!supervisorResponse.decision || !supervisorResponse.reasoning) {
+          console.error('[supervisorAgent] Missing required fields in supervisor response:', supervisorResponse);
+          console.error('[supervisorAgent] Available fields:', Object.keys(supervisorResponse));
+          return {
+            decision: 'reject',
+            reasoning: 'Invalid supervisor response format - missing required fields',
+            nextResponse: 'Извините, не удалось обработать запрос.',
+          };
+        }
+
         return supervisorResponse;
       } catch (parseError) {
-        console.error('[supervisorAgent] Failed to parse supervisor response:', finalText);
+        console.error('[supervisorAgent] Failed to parse supervisor response');
         console.error('[supervisorAgent] Parse error:', parseError);
+        console.error('[supervisorAgent] Error name:', (parseError as Error).name);
+        console.error('[supervisorAgent] Error message:', (parseError as Error).message);
+        console.error('[supervisorAgent] Full response text:', finalText);
+        console.error('[supervisorAgent] Response text length:', finalText.length);
         return {
           decision: 'reject',
-          reasoning: 'Invalid supervisor response format',
+          reasoning: `Invalid supervisor response format: ${(parseError as Error).message}`,
           nextResponse: 'Извините, не удалось обработать запрос.',
         };
       }
