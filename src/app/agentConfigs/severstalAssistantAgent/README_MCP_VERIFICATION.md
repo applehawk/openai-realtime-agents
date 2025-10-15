@@ -6,7 +6,7 @@ This document provides multiple methods to verify that `hostedMcpTool` instances
 
 The `severstalAssistant` agent has **3 tools** configured:
 1. **Calendar MCP** - Email and calendar operations (`https://rndaibot.app.n8n.cloud/mcp/google_my_account`)
-2. **RAG MCP** - Knowledge base queries (`https://79.132.139.57:9621/`)
+2. **RAG MCP** - Knowledge base queries (`http://79.132.139.57:9621/`)
 3. **delegateToSupervisor** - Custom tool for complex task delegation
 
 ## Verification Methods
@@ -23,7 +23,7 @@ tools: [
     }),
     hostedMcpTool({
         serverLabel: 'RAG',
-        serverUrl: 'https://79.132.139.57:9621/',
+        serverUrl: 'http://79.132.139.57:9621/',
     }),
     delegateToSupervisor,
 ],
@@ -124,7 +124,7 @@ Open browser DevTools → Network tab:
 1. Connect to the agent and trigger a tool
 2. Look for requests to:
    - `https://rndaibot.app.n8n.cloud/mcp/google_my_account`
-   - `https://79.132.139.57:9621/`
+   - `http://79.132.139.57:9621/`
 3. Verify the requests complete successfully (status 200)
 
 ## Expected Results

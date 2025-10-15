@@ -13,7 +13,7 @@ export const supervisorMcpTools = [
   // RAG MCP for knowledge base queries
   hostedMcpTool({
     serverLabel: 'RAG',
-    serverUrl: '79.132.139.57:9621',
+    serverUrl: 'http://79.132.139.57:9621/',
   }),
 ];
 
@@ -254,17 +254,24 @@ async function handleSupervisorToolCalls(
       try {
         // Find the matching MCP tool and execute it
         const mcpTool = supervisorMcpTools.find((t: any) => {
-          // Check if this tool matches the function call
-          // MCP tools expose their methods through the serverLabel
-          return t && typeof t === 'object' && 'execute' in t;
+          // Check if this tool matches the function call by name or serverLabel
+          return t && typeof t === 'object' && 
+            (t.name === fName || t.serverLabel === fName || 
+             t.definition?.name === fName || t.definition?.serverLabel === fName);
         });
 
-        if (mcpTool && typeof (mcpTool as any).execute === 'function') {
-          // Execute the MCP tool
-          console.log(`[supervisorAgent] Executing MCP tool: ${fName}`);
-          toolResult = await (mcpTool as any).execute(args);
+        if (mcpTool) {
+          // MCP tools are handled by the OpenAI Realtime API automatically
+          // We just need to pass the tool call through to the API
+          console.log(`[supervisorAgent] MCP tool ${fName} found, delegating to API`);
+          toolResult = {
+            status: 'mcp_delegated',
+            message: `MCP tool ${fName} will be executed by the API`,
+            toolName: fName,
+            arguments: args,
+          };
         } else {
-          // Tool not found or not executable
+          // Tool not found in MCP tools
           console.warn(`[supervisorAgent] Tool ${fName} not found in MCP tools, delegating to primary agent`);
           toolResult = {
             status: 'delegated',
