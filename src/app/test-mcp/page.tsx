@@ -143,10 +143,10 @@ export default function TestMcpPage() {
         <p>When running the main app:</p>
         <ol>
           <li>Start the dev server: <code>npm run dev</code></li>
-          <li>Select "Severstal Assistant" scenario from the dropdown</li>
+          <li>Select &ldquo;Severstal Assistant&rdquo; scenario from the dropdown</li>
           <li>Open browser DevTools console</li>
           <li>Look for logs starting with <code>[severstalAssistant]</code></li>
-          <li>Connect to the session and try asking: "Прочитай последнее письмо"</li>
+          <li>Connect to the session and try asking: &ldquo;Прочитай последнее письмо&rdquo;</li>
           <li>Check the Events pane (right side) for tool execution events</li>
           <li>Look for <code>session.update</code> events showing available tools</li>
         </ol>
