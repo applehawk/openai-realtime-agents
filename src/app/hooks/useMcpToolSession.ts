@@ -292,6 +292,64 @@ export function useMcpToolSession() {
   }
 
   /**
+   * Handles response.output_item.done event.
+   * Fired when an output item (including function_call items) is completed.
+   *
+   * @param event - Server event with the completed item details
+   */
+  function handleOutputItemDone(event: any) {
+    const item = event.item;
+
+    if (!item) {
+      logServerEvent(event);
+      return;
+    }
+
+    console.log(`[MCP] Output item done:`, item);
+
+    // Handle function_call completion
+    if (item.type === 'function_call') {
+      const { id, name, call_id, status, arguments: args } = item;
+      const itemId = id || call_id;
+
+      logServerEvent(event);
+
+      // Check if this is an error status
+      if (status === 'failed' || status === 'error') {
+        console.error(`[MCP] Function call failed: ${name} (${itemId})`, event);
+
+        addTranscriptBreadcrumb(`MCP Function Call Failed: ${name}`, {
+          callId: itemId,
+          status: status,
+          arguments: args,
+          event: event,
+        });
+
+        // Clean up from tracking
+        if (itemId) {
+          mcpCallsInProgressRef.current.delete(itemId);
+        }
+      } else if (status === 'completed') {
+        console.log(`[MCP] Function call completed: ${name} (${itemId})`);
+
+        addTranscriptBreadcrumb(`MCP Function Call Done: ${name}`, {
+          callId: itemId,
+          status: status,
+          arguments: args,
+        });
+
+        // Clean up from tracking
+        if (itemId) {
+          mcpCallsInProgressRef.current.delete(itemId);
+        }
+      }
+    } else {
+      // Log other types of output items
+      logServerEvent(event);
+    }
+  }
+
+  /**
    * Main handler for MCP-related transport events.
    * Routes server events to the appropriate handler based on event type.
    *
@@ -315,6 +373,11 @@ export function useMcpToolSession() {
           return true;
         }
         return false;
+
+      case "response.output_item.done":
+        // Handle completion of function_call items (including MCP tools)
+        handleOutputItemDone(event);
+        return true;
 
       case "response.mcp_call.arguments.delta":
       case "response.mcp_call_arguments.delta":
