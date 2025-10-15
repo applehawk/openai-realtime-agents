@@ -15,7 +15,7 @@ export const supervisorMcpTools = [
   {
     type: 'mcp',
     server_label: 'RAG',
-    server_url: 'https://79.132.139.57:9621/',
+    server_url: 'http://79.132.139.57:9621/',
   },
 ];
 
