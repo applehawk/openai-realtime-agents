@@ -365,6 +365,59 @@ export function useMcpToolSession() {
     }
 
     switch (event.type) {
+      case "error": {
+        // Check if this error is related to an MCP tool call that was in progress
+        const hasActiveMcpCalls = mcpCallsInProgressRef.current.size > 0;
+
+        if (hasActiveMcpCalls) {
+          const errorObj = event.error || event;
+          let errorMessage = 'Unknown MCP error';
+
+          // Check if error object is empty
+          if (errorObj && typeof errorObj === 'object') {
+            if (Object.keys(errorObj.error || errorObj).length === 0) {
+              errorMessage = 'Empty error object received during MCP tool execution';
+              console.warn('[MCP] Empty error during tool execution. Active calls:',
+                Array.from(mcpCallsInProgressRef.current.entries()));
+            } else if (errorObj.message && errorObj.message !== '{}') {
+              errorMessage = errorObj.message;
+            } else if (errorObj.error) {
+              errorMessage = typeof errorObj.error === 'string'
+                ? errorObj.error
+                : JSON.stringify(errorObj.error);
+            }
+          }
+
+          console.error('[MCP] Error during tool execution:', errorMessage, event);
+
+          // Log error with context about active calls
+          logServerEvent({
+            type: 'mcp_error',
+            message: errorMessage,
+            activeCalls: Array.from(mcpCallsInProgressRef.current.entries()).map(([id, info]) => ({
+              id,
+              name: info.name,
+            })),
+            raw: event,
+          });
+
+          // Add breadcrumb for any active MCP calls
+          mcpCallsInProgressRef.current.forEach((info, id) => {
+            addTranscriptBreadcrumb(`MCP Tool Error: ${info.name}`, {
+              callId: id,
+              status: 'error',
+              error: errorMessage,
+            });
+          });
+
+          // Clean up all active calls since we hit an error
+          mcpCallsInProgressRef.current.clear();
+
+          return true;
+        }
+        return false;
+      }
+
       case "response.output_item.added":
       case "conversation.item.added":
         // Check if this is an MCP call and handle it
