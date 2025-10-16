@@ -105,7 +105,7 @@ export const severstalAssistant = new RealtimeAgent({
         }),
         hostedMcpTool({
             serverLabel: 'RAG',
-            serverUrl: 'http://localhost:8000',
+            serverUrl: 'http://host.docker.internal:8000',
         }),
         // Supervisor delegation tool for complex multi-step tasks
         delegateToSupervisor,
