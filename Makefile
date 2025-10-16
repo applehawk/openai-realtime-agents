@@ -44,7 +44,7 @@ updown:
 	@echo "Press Ctrl+C to stop the containers"
 	@echo "========================================"
 	@echo ""
-	docker compose up --build --force-recreate --remove-orphans
+	docker compose up --build --force-recreate --remove-orphans -d
 
 logs:
 	@echo "========================================"

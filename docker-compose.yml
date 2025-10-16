@@ -14,6 +14,8 @@ services:
       - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED:-0}
     env_file:
       - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - app-network
     logging:

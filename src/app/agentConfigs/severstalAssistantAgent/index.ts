@@ -1,6 +1,7 @@
 import { RealtimeAgent } from '@openai/agents/realtime';
 import { hostedMcpTool } from '@openai/agents';
 import { delegateToSupervisor } from './supervisorAgent';
+import { lightragQuery, lightragQueryData } from './ragTools';
 
 // Re-export the heuristic function for testing and external use
 export { shouldDelegateToSupervisor } from './supervisorAgent';
@@ -103,20 +104,28 @@ export const severstalAssistant = new RealtimeAgent({
             serverLabel: 'calendar',
             serverUrl: 'https://rndaibot.app.n8n.cloud/mcp/google_my_account',
         }),
-        hostedMcpTool({
-            serverLabel: 'RAG',
-            serverUrl: 'http://host.docker.internal:8000',
-        }),
+        // LightRAG tools for knowledge retrieval (custom implementation for JSON-RPC)
+        lightragQuery,
+        lightragQueryData,
         // Supervisor delegation tool for complex multi-step tasks
         delegateToSupervisor,
     ],
   });
 
-// Verification: Log MCP tool configuration
+// Verification: Log tool configuration
 console.log('[severstalAssistant] Agent initialized with tools:', {
   toolCount: severstalAssistant.tools.length,
   toolNames: severstalAssistant.tools.map((t: any) => t.name || t.definition?.name || 'unnamed'),
   toolTypes: severstalAssistant.tools.map((t: any) => t.constructor?.name || typeof t),
+});
+
+// Detailed tool inspection
+severstalAssistant.tools.forEach((t: any, idx: number) => {
+  console.log(`[severstalAssistant] Tool ${idx + 1}:`, {
+    name: t.name || t.definition?.name,
+    type: t.constructor?.name,
+    description: (t.description || t.definition?.description || '').substring(0, 100),
+  });
 });
 
 export const chatSeverstalAssistantScenario = [severstalAssistant];
