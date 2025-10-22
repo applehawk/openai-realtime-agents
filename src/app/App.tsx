@@ -9,6 +9,7 @@ import Events from "./components/Events";
 import BottomToolbar from "./components/BottomToolbar";
 import UserProfile from "./components/UserProfile";
 import SeverstalLogo from "./components/SeverstalLogo";
+import InterviewButton from "./components/InterviewButton";
 
 // Types
 import { SessionStatus } from "@/app/types";
@@ -245,6 +246,11 @@ function App() {
     sendClientEvent({ type: 'response.create' }, '(simulated user text message)');
   };
 
+  const handleStartInterview = () => {
+    // Отправляем сообщение агенту для запуска интервью
+    sendSimulatedUserMessage("Проведи со мной первичное интервью для настройки предпочтений");
+  };
+
   const updateSession = (shouldTriggerResponse: boolean = false) => {
     // Reflect Push-to-Talk UI state by (de)activating server VAD on the
     // backend. The Realtime SDK supports live session updates via the
@@ -256,9 +262,9 @@ function App() {
       },
     });
 
-    // Send an initial 'hi' message to trigger the agent to greet the user
+    // Send an initial message to trigger the agent to check interview status
     if (shouldTriggerResponse) {
-      sendSimulatedUserMessage('hi');
+      sendSimulatedUserMessage('Привет! Проверь статус моего интервью и предложи помощь.');
     }
     return;
   }
@@ -403,6 +409,7 @@ function App() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <InterviewButton onStartInterview={handleStartInterview} />
           <UserProfile />
         </div>
       </div>
