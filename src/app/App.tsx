@@ -18,22 +18,13 @@ import type { RealtimeAgent } from '@openai/agents/realtime';
 import { useTranscript } from "@/app/contexts/TranscriptContext";
 import { useEvent } from "@/app/contexts/EventContext";
 import { useRealtimeSession } from "./hooks/useRealtimeSession";
-import { createModerationGuardrail } from "@/app/agentConfigs/guardrails";
 
 // Agent configs
 import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
-import { customerServiceRetailScenario } from "@/app/agentConfigs/customerServiceRetail";
-import { chatSupervisorScenario } from "@/app/agentConfigs/chatSupervisor";
-import { customerServiceRetailCompanyName } from "@/app/agentConfigs/customerServiceRetail";
-import { chatSupervisorCompanyName } from "@/app/agentConfigs/chatSupervisor";
-import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff";
 import { chatSeverstalAssistantScenario } from "@/app/agentConfigs/severstalAssistantAgent";
 
 // Map used by connect logic for scenarios defined via the SDK.
 const sdkScenarioMap: Record<string, RealtimeAgent[]> = {
-  simpleHandoff: simpleHandoffScenario,
-  customerServiceRetail: customerServiceRetailScenario,
-  chatSupervisor: chatSupervisorScenario,
   chatSeverstalAssistant: chatSeverstalAssistantScenario,
 };
 
@@ -184,7 +175,6 @@ function App() {
     logClientEvent({ url: "/session" }, "fetch_session_token_request");
 
     const tokenResponse = await fetch("/api/session");
-    console.log(tokenResponse)
     const data = await tokenResponse.json();
 
     logServerEvent(data, "fetch_session_token_response");
@@ -216,16 +206,11 @@ function App() {
           reorderedAgents.unshift(agent);
         }
 
-        const companyName = agentSetKey === 'customerServiceRetail'
-          ? customerServiceRetailCompanyName
-          : chatSupervisorCompanyName;
-        const guardrail = createModerationGuardrail(companyName);
-
         await connect({
           getEphemeralKey: async () => EPHEMERAL_KEY,
           initialAgents: reorderedAgents,
           audioElement: sdkAudioElement,
-          outputGuardrails: [guardrail],
+          outputGuardrails: [],
           extraContext: {
             addTranscriptBreadcrumb,
           },
@@ -319,24 +304,6 @@ function App() {
     }
   };
 
-  // const _handleAgentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-  //   const newAgentConfig = e.target.value;
-  //   const url = new URL(window.location.toString());
-  //   url.searchParams.set("agentConfig", newAgentConfig);
-  //   window.location.replace(url.toString());
-  // };
-
-  // const _handleSelectedAgentChange = (
-  //   e: React.ChangeEvent<HTMLSelectElement>
-  // ) => {
-  //   const newAgentName = e.target.value;
-  //   // Reconnect session with the newly selected agent as root so that tool
-  //   // execution works correctly.
-  //   disconnectFromRealtime();
-  //   setSelectedAgentName(newAgentName);
-  //   // connectToRealtime will be triggered by effect watching selectedAgentName
-  // };
-
   // Because we need a new connection, refresh the page when codec changes
   const handleCodecChange = (newCodec: string) => {
     const url = new URL(window.location.toString());
@@ -423,8 +390,6 @@ function App() {
       stopRecording();
     };
   }, [sessionStatus]);
-
-  // const agentSetKey = searchParams.get("agentConfig") || "default";
 
   return (
     <div className="text-base flex flex-col h-screen bg-gray-100 text-gray-800 relative">
