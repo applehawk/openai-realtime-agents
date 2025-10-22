@@ -262,10 +262,10 @@ function App() {
       },
     });
 
-    // Send an initial message to trigger the agent to check interview status
-    if (shouldTriggerResponse) {
-      sendSimulatedUserMessage('Привет! Проверь статус моего интервью и предложи помощь.');
-    }
+      // Send an initial message to trigger the agent to get user info and check interview status
+      if (shouldTriggerResponse) {
+        sendSimulatedUserMessage('Привет! Сначала получи информацию о пользователе, затем проверь статус моего интервью и предложи помощь.');
+      }
     return;
   }
 

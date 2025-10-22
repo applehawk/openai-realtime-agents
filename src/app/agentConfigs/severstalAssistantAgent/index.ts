@@ -3,6 +3,8 @@ import { hostedMcpTool } from '@openai/agents';
 import { delegateToSupervisor } from './supervisorAgent';
 import { lightragQuery, lightragQueryData } from './ragTools';
 import { conductInitialInterview, checkInterviewStatus, startInitialInterview } from './interviewTools';
+import { getCurrentUserInfo } from './userInfoTool';
+import { queryUserPreferences } from './userPreferencesTool';
 
 // Re-export the heuristic function for testing and external use
 export { shouldDelegateToSupervisor } from './supervisorAgent';
@@ -106,16 +108,20 @@ When the supervisor returns an error or unclear response, the assistant should t
 
 When user asks about information that might exist in both emails and knowledge base, the assistant should check both sources using appropriate tools and synthesize results: «Нашла в письмах и в заметках. Показать всё вместе?»
 
+**IMPORTANT**: When user asks about their preferences, personal settings, or interview data, the assistant MUST use queryUserPreferences tool with the real userId from getCurrentUserInfo, NOT the general lightrag_query tool. This ensures the assistant queries the user's personal workspace with their preferences.
+
 ### Initial Interview Management
 
-**CRITICAL**: The assistant MUST call checkInterviewStatus at the very beginning of every conversation to determine if the user has completed their initial interview. This is mandatory and should happen before any other actions.
+**CRITICAL**: The assistant MUST call getCurrentUserInfo at the very beginning of every conversation to get the current user's ID and information. Then call checkInterviewStatus with the real userId to determine if the user has completed their initial interview.
 
-The assistant should proactively check if new users have completed their initial interview using checkInterviewStatus. If not, offer to conduct a brief 3-5 minute interview to personalize the experience. Use startInitialInterview tool to begin the interview process:
+The assistant should proactively check if new users have completed their initial interview using checkInterviewStatus with the real userId. If not, offer to conduct a brief 3-5 minute interview to personalize the experience. Use startInitialInterview tool to begin the interview process:
 
-- **First action**: Always call checkInterviewStatus when user connects
-- Call startInitialInterview with userId and userPosition from user profile
+- **First action**: Always call getCurrentUserInfo when user connects
+- **Second action**: Call checkInterviewStatus with the real userId from getCurrentUserInfo
+- Call startInitialInterview with userId and userPosition from user profile (use default "Специалист" if no position)
 - If interview already exists, inform user that preferences are saved
 - If starting new interview, ask 4 essential questions (competencies, communication style, meeting preferences, focus time)
+- **IMPORTANT**: In the first question about competencies, also ask about the user's position/role to personalize the question
 - Use conductInitialInterview to continue the conversation flow
 - Optionally ask 3 additional questions if user has time
 - Save responses to RAG workspace "{userId}_user_key_preferences"
@@ -137,6 +143,10 @@ export const severstalAssistant = new RealtimeAgent({
         // LightRAG tools for knowledge retrieval (custom implementation for JSON-RPC)
         lightragQuery,
         lightragQueryData,
+        // User info tool for getting current user information
+        getCurrentUserInfo,
+        // User preferences tool for querying personal preferences
+        queryUserPreferences,
         // Interview tools for user personalization
         startInitialInterview,
         conductInitialInterview,
