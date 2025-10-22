@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const RAG_SERVER_URL = 'http://host.docker.internal:8000/mcp';
+const RAG_SERVER_URL = process.env.RAG_SERVER_URL || 'http://79.132.139.57:8000/mcp';
 
 /**
  * Proxy endpoint for RAG MCP server calls

@@ -12,6 +12,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-https://rndaibot.ru/apib/v1}
       - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED:-0}
+      - RAG_SERVER_URL=${RAG_SERVER_URL:-http://79.132.139.57:8000/mcp}
     env_file:
       - .env
     extra_hosts:
