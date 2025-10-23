@@ -7,7 +7,7 @@
  * 3. Check browser console for detailed logs
  */
 
-import { severstalAssistant } from './index';
+import { severstalAssistant } from '../index';
 
 export interface McpToolVerification {
   isConnected: boolean;

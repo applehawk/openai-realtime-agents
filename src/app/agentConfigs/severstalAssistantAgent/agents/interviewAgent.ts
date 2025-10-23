@@ -9,11 +9,11 @@
 
 import { RealtimeAgent } from '@openai/agents/realtime';
 import { interviewAgentPrompt } from '../prompts/interviewPrompt';
-import { getCurrentUserInfo } from '../userInfoTool';
+import { getCurrentUserInfo } from '../tools/userInfoTool';
 import {
   startInitialInterview,
   conductInitialInterview,
-} from '../interviewTools';
+} from '../tools/interviewTools';
 
 export const interviewAgent = new RealtimeAgent({
   name: 'interviewAgent',

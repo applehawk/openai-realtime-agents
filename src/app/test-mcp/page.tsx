@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { verifyMcpToolsConnection, type McpToolVerification } from '@/app/agentConfigs/severstalAssistantAgent/verifyMcpTools';
+import { verifyMcpToolsConnection, type McpToolVerification } from '@/app/agentConfigs/severstalAssistantAgent/libs/verifyMcpTools';
 
 /**
  * Test page to verify MCP tools are connected to severstalAssistant

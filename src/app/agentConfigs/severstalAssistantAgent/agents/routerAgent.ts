@@ -16,9 +16,9 @@ import { knowledgeAgent, setKnowledgeAgentHandoff } from './knowledgeAgent';
 import { interviewAgent, setInterviewAgentHandoff } from './interviewAgent';
 
 // Tools for direct execution and delegation
-import { delegateToIntelligentSupervisor } from '../intelligentSupervisorTool'; // Unified supervisor
-import { checkInterviewStatus } from '../interviewTools';
-import { getCurrentUserInfo } from '../userInfoTool';
+import { delegateToIntelligentSupervisor } from '../tools/intelligentSupervisorTool'; // Unified supervisor
+import { checkInterviewStatus } from '../tools/interviewTools';
+import { getCurrentUserInfo } from '../tools/userInfoTool';
 
 export const routerAgent = new RealtimeAgent({
   name: 'routerAgent',

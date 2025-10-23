@@ -12,7 +12,7 @@ import { knowledgeAgentPrompt } from '../prompts/knowledgePrompt';
 import {
   lightragQuery,
   lightragQueryData
-} from '../ragTools';
+} from '../tools/rag/ragTools';
 
 export const knowledgeAgent = new RealtimeAgent({
   name: 'knowledgeAgent',
