@@ -53,6 +53,8 @@ function App() {
   const {
     addTranscriptMessage,
     addTranscriptBreadcrumb,
+    addTaskProgressMessage,
+    updateTaskProgress,
   } = useTranscript();
   const { logClientEvent, logServerEvent } = useEvent();
 
@@ -214,6 +216,8 @@ function App() {
           outputGuardrails: [],
           extraContext: {
             addTranscriptBreadcrumb,
+            addTaskProgressMessage,
+            updateTaskProgress,
           },
           model: "gpt-realtime",
         });

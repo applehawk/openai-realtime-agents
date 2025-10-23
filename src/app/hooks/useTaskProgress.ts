@@ -93,7 +93,7 @@ export function useTaskProgress(sessionId: string | null): TaskProgressState {
       console.log('[useTaskProgress] Cleanup: closing SSE');
       eventSource.close();
     };
-  }, [sessionId, handleUpdate]);
+  }, [sessionId]); // handleUpdate is stable via useCallback, no need in deps
 
   return state;
 }

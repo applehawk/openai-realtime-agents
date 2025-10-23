@@ -1,4 +1,4 @@
-"use-client";
+"use client";
 
 import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -8,6 +8,7 @@ import { useTranscript } from "@/app/contexts/TranscriptContext";
 import { DownloadIcon, ClipboardCopyIcon } from "@radix-ui/react-icons";
 import { GuardrailChip } from "./GuardrailChip";
 import ModelThinkingCloud from "./ModelThinkingCloud";
+import { TaskProgressMessage } from "./TaskProgressMessage";
 
 export interface TranscriptProps {
   userText: string;
@@ -222,8 +223,21 @@ function Transcript({
                   )}
                 </div>
               );
+            } else if (type === "TASK_PROGRESS") {
+              // Render task progress message
+              return (
+                <div key={itemId} className="flex justify-start flex-col items-start">
+                  <TaskProgressMessage
+                    sessionId={item.sessionId || ''}
+                    taskDescription={title}
+                    timestamp={timestamp}
+                    initialProgress={item.progress || 0}
+                    initialMessage={item.progressMessage || 'Инициализация задачи...'}
+                  />
+                </div>
+              );
             } else {
-              // Fallback if type is neither MESSAGE nor BREADCRUMB
+              // Fallback if type is unknown
               return (
                 <div
                   key={itemId}

@@ -106,14 +106,11 @@ export const delegateToIntelligentSupervisor = tool({
       | ((title: string, data?: any) => void)
       | undefined;
 
-    const history: RealtimeItem[] = (details?.context as any)?.history ?? [];
+    const addTaskProgressMessage = (details?.context as any)?.addTaskProgressMessage as
+      | ((sessionId: string, taskDescription: string) => void)
+      | undefined;
 
-    if (addBreadcrumb) {
-      addBreadcrumb('[Intelligent Supervisor] Запрос отправлен', {
-        taskDescription: taskDescription.substring(0, 100) + '...',
-        executionMode: executionMode || 'auto',
-      });
-    }
+    const history: RealtimeItem[] = (details?.context as any)?.history ?? [];
 
     try {
       console.log('[intelligentSupervisorTool] Calling /api/supervisor/unified...');
@@ -121,10 +118,18 @@ export const delegateToIntelligentSupervisor = tool({
       // Generate sessionId for progress tracking
       const sessionId = `session-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
+      // Create TASK_PROGRESS message in transcript
+      if (addTaskProgressMessage) {
+        console.log('[intelligentSupervisorTool] Creating TASK_PROGRESS message with sessionId:', sessionId);
+        addTaskProgressMessage(sessionId, taskDescription);
+      }
+
+      // Also add breadcrumb for debugging
       if (addBreadcrumb) {
-        addBreadcrumb('[Intelligent Supervisor] SSE прогресс доступен', {
+        addBreadcrumb('[Intelligent Supervisor] Запрос отправлен', {
           sessionId,
-          streamUrl: `/api/supervisor/unified/stream?sessionId=${sessionId}`,
+          taskDescription: taskDescription.substring(0, 100) + '...',
+          executionMode: executionMode || 'auto',
         });
       }
 
