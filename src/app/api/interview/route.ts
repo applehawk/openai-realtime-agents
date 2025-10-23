@@ -135,7 +135,22 @@ async function checkInterviewStatus(userId: string) {
     const workspaceName = `${userId}_user_key_preferences`;
     
     // Check if workspace exists
-    const workspaces = await callRagApiDirect('/workspaces', 'GET');
+    const workspacesResponse = await callRagApiDirect('/workspaces', 'GET');
+    
+    // Handle different response structures
+    let workspaces = [];
+    if (workspacesResponse.workspaces) {
+      workspaces = workspacesResponse.workspaces;
+    } else if (Array.isArray(workspacesResponse)) {
+      workspaces = workspacesResponse;
+    } else {
+      console.log('[Interview] Unexpected workspaces response structure:', workspacesResponse);
+      return NextResponse.json({
+        hasInterview: false,
+        message: 'Первичное интервью не проводилось',
+      });
+    }
+    
     const userWorkspace = workspaces.find((ws: any) => ws.name === workspaceName);
     
     if (!userWorkspace) {
@@ -145,18 +160,29 @@ async function checkInterviewStatus(userId: string) {
       });
     }
     
-    // Query for interview data
+    // Query for interview data directly - don't rely on has_data flag
     const interviewData = await callRagApiDirect('/query', 'POST', {
-      query: 'профиль пользователя предпочтения интервью',
-      mode: 'mix',
-      include_references: false,
+      query: `интервью пользователя ${userId}`,
+      mode: 'local',
+      top_k: 1,
       workspace: workspaceName,
     });
     
+    // Check if we got meaningful data (not just "no information" response)
+    if (interviewData && interviewData.response && 
+        !interviewData.response.includes('не располагаю достаточной информацией') &&
+        !interviewData.response.includes('не найдено') &&
+        interviewData.response.length > 50) {
+      return NextResponse.json({
+        hasInterview: true,
+        message: 'Интервью уже проводилось',
+        interviewData: interviewData.response,
+      });
+    }
+    
     return NextResponse.json({
-      hasInterview: true,
-      message: 'Интервью уже проводилось',
-      interviewData: interviewData.response || 'Данные интервью найдены',
+      hasInterview: false,
+      message: 'Первичное интервью не проводилось',
     });
   } catch (error: any) {
     console.error('Error checking interview status:', error);

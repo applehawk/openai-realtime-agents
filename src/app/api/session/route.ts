@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { corsHeaders, corsResponse } from '@/app/lib/cors';
+import { cookies } from 'next/headers';
+import { authClient } from '@/app/lib/authClient';
 
 export async function OPTIONS(request: Request) {
   return new Response(null, {
@@ -10,6 +12,25 @@ export async function OPTIONS(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    // Get user authentication
+    const cookieStore = await cookies();
+    const accessToken = cookieStore.get('access_token')?.value;
+    
+    let userInfo = null;
+    if (accessToken) {
+      try {
+        const user = await authClient.getCurrentUser(accessToken);
+        userInfo = {
+          userId: user.id,
+          username: user.username,
+          email: user.email,
+          position: user.username || 'Специалист', // TODO: Add position field to user model
+        };
+      } catch (error) {
+        console.error('Failed to get user info:', error);
+      }
+    }
+
     const sessionConfig = JSON.stringify({
       session: {
         type: "realtime",
@@ -17,6 +38,9 @@ export async function POST(request: Request) {
         audio: {
           output: { voice: "marin" },
         },
+        ...(userInfo && {
+          instructions: `User profile: ID=${userInfo.userId}, Username=${userInfo.username}, Position=${userInfo.position}`,
+        }),
       },
     });
 
@@ -50,6 +74,24 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
+    // Get user authentication
+    const cookieStore = await cookies();
+    const accessToken = cookieStore.get('access_token')?.value;
+    
+    let userInfo = null;
+    if (accessToken) {
+      try {
+        const user = await authClient.getCurrentUser(accessToken);
+        userInfo = {
+          userId: user.id,
+          username: user.username,
+          email: user.email,
+          position: user.username || 'Специалист', // TODO: Add position field to user model
+        };
+      } catch (error) {
+        console.error('Failed to get user info:', error);
+      }
+    }
 
     const sessionConfig = JSON.stringify({
       session: {
@@ -58,6 +100,9 @@ export async function GET(request: Request) {
           audio: {
               output: { voice: "marin" },
           },
+          ...(userInfo && {
+            instructions: `User profile: ID=${userInfo.userId}, Username=${userInfo.username}, Position=${userInfo.position}`,
+          }),
       },
     });
 

@@ -47,7 +47,19 @@ export async function createUserWorkspace(userId: string): Promise<void> {
   
   try {
     // Check if workspace exists first
-    const workspaces = await callRagApiDirect('/workspaces', 'GET');
+    const workspacesResponse = await callRagApiDirect('/workspaces', 'GET');
+    
+    // Handle different response structures
+    let workspaces = [];
+    if (workspacesResponse.workspaces) {
+      workspaces = workspacesResponse.workspaces;
+    } else if (Array.isArray(workspacesResponse)) {
+      workspaces = workspacesResponse;
+    } else {
+      console.log('[Interview] Unexpected workspaces response structure:', workspacesResponse);
+      // Proceed with creation anyway
+    }
+    
     const existingWorkspace = workspaces.find((ws: any) => ws.name === workspaceName);
     
     if (existingWorkspace) {
@@ -299,7 +311,11 @@ export const startInitialInterview = tool({
         workspace: workspaceName,
       });
       
-      if (response && response.response && !response.response.includes('не располагаю достаточной информацией')) {
+      if (response && response.response && 
+          !response.response.includes('не располагаю достаточной информацией') &&
+          !response.response.includes('No relevant context found') &&
+          !response.response.includes('не найдено') &&
+          response.response.length > 50) {
         return {
           status: 'already_completed',
           message: 'Интервью уже проводилось ранее. Ваши предпочтения сохранены.',
@@ -312,7 +328,7 @@ export const startInitialInterview = tool({
     // Start first question
     const firstQuestion = `Привет! Я ваш персональный ассистент. Чтобы лучше вам помогать, давайте проведем короткое интервью - всего 3-5 минут.
 
-Я вижу, что ваша должность — ${userPosition}. Обычно на этой позиции специалисты разбираются в нескольких ключевых областях. Подтверждаете? Есть ли другие темы, в которых вы эксперт?`;
+Расскажите, пожалуйста, какую должность вы занимаете и в каких областях вы считаете себя экспертом? Это поможет мне лучше понимать ваши задачи и предлагать более релевантную помощь.`;
     
     return {
       status: 'started',
@@ -362,7 +378,11 @@ export const checkInterviewStatus = tool({
         workspace: workspaceName,
       });
       
-      if (response && response.response && !response.response.includes('не располагаю достаточной информацией')) {
+      if (response && response.response && 
+          !response.response.includes('не располагаю достаточной информацией') &&
+          !response.response.includes('No relevant context found') &&
+          !response.response.includes('не найдено') &&
+          response.response.length > 50) {
         return {
           hasInterview: true,
           message: 'Интервью уже проводилось ранее. Ваши предпочтения сохранены.',
