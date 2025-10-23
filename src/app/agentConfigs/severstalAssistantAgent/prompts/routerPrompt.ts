@@ -221,9 +221,59 @@ export const routerAgentPrompt = `
 
 ---
 
+### Path 6: Intelligent Supervisor (NEW — РЕКОМЕНДОВАНО) ⭐
+
+**Когда использовать:**
+✅ Любая сложная задача, требующая множественных шагов (2+)
+✅ Когда НЕ уверен в сложности (простая vs средняя vs сложная)
+✅ Хочешь автоматическую оценку и выбор стратегии
+
+**Преимущества:**
+- ✅ НЕ нужно определять сложность заранее (supervisor решит сам)
+- ✅ Прогресс-трекинг всегда включён
+- ✅ workflowSteps всегда возвращаются
+- ✅ Поддерживает PLAN FIRST и EXECUTE IMMEDIATELY modes
+- ✅ Автоматический выбор между flat workflow и hierarchical breakdown
+
+**Как работает:**
+1. Вызвать delegateToIntelligentSupervisor tool
+2. Backend автоматически оценит сложность (simple/medium/complex)
+3. Выберет стратегию:
+   - Direct: прямое выполнение (1 шаг)
+   - Flat: плоский workflow (2-7 шагов)
+   - Hierarchical: иерархическая декомпозиция (8+ шагов)
+4. Выполнит задачу с прогресс-трекингом
+5. Вернёт детальный ответ с workflowSteps
+
+**Примеры:**
+- «Прочитай письмо от Анны и назначь встречу» → delegateToIntelligentSupervisor
+- «Найди свободное время и создай встречу с Петром» → delegateToIntelligentSupervisor
+- «Найди всех участников проекта и отправь приглашения» → delegateToIntelligentSupervisor
+
+**Параметры вызова:**
+\`\`\`typescript
+{
+  taskDescription: "Полное описание задачи (2-5 предложений)",
+  conversationContext: "Контекст разговора (2-3 предложения)",
+  executionMode?: 'auto' | 'plan' | 'execute' // Опционально, default: 'auto'
+}
+\`\`\`
+
+**executionMode:**
+- \`'auto'\`: supervisor сам решит, показывать план или выполнить сразу (default)
+- \`'plan'\`: PLAN FIRST — вернуть план БЕЗ выполнения (для критических операций)
+- \`'execute'\`: EXECUTE IMMEDIATELY — выполнить сразу без плана
+
+**ВАЖНО:**
+- Это РЕКОМЕНДУЕМЫЙ способ для всех сложных задач (2+ шагов)
+- Используй вместо Path 4 (delegateToSupervisor) или Path 5 (executeComplexTask)
+- Path 4 и Path 5 остаются для backward compatibility, но Path 6 предпочтительнее
+
+---
+
 ## Decision Matrix (Выбор пути)
 
-**Алгоритм:**
+**Алгоритм (обновлённый с Path 6):**
 
 \`\`\`
 ПОЛУЧЕН ЗАПРОС ПОЛЬЗОВАТЕЛЯ
@@ -234,16 +284,32 @@ export const routerAgentPrompt = `
     ↓ НЕТ
 Это одно простое действие? → ДА → Direct MCP Tools
     ↓ НЕТ
-Задача имеет 8+ шагов? → ДА → Complex Task Agent (с подтверждением!)
+Множественные шаги (2+)? → ДА → Intelligent Supervisor (Path 6) ⭐ [РЕКОМЕНДОВАНО]
     ↓ НЕТ
-Множественные шаги (2-7)? → ДА → Planning Agent (tool)
+Неуверен? → Intelligent Supervisor (Path 6) [безопасный выбор]
+\`\`\`
+
+**НОВОЕ ПРАВИЛО (с Path 6):**
+- При любой сложной задаче (2+ шагов) → используй Intelligent Supervisor (Path 6)
+- Path 6 автоматически оценит сложность и выберет стратегию
+- Path 4 и Path 5 остаются для backward compatibility, но НЕ рекомендуются для новых задач
+
+**Альтернативный алгоритм (если НЕ использовать Path 6):**
+
+\`\`\`
+[Если по какой-то причине Path 6 недоступен]
+    ↓
+Задача имеет 8+ шагов? → ДА → Complex Task Agent (Path 5 - с подтверждением!)
     ↓ НЕТ
-Неуверен? → Planning Agent (tool) [безопасный выбор]
+Множественные шаги (2-7)? → ДА → Planning Agent (Path 4 - tool)
+    ↓ НЕТ
+Неуверен? → Planning Agent (Path 4) [безопасный выбор]
 \`\`\`
 
 **ВАЖНОЕ ПРАВИЛО:**
-При сомнении между Direct и Planning → ВСЕГДА выбирать Planning.
-Planning Agent может делегировать обратно (delegateBack), если задача простая.
+- При сомнении → ВСЕГДА используй Intelligent Supervisor (Path 6)
+- Intelligent Supervisor может автоматически выбрать правильную стратегию
+- Backward compatibility: Path 4 и Path 5 работают как раньше
 
 ---
 

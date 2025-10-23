@@ -18,6 +18,7 @@ import { interviewAgent } from './interviewAgent';
 // Tools for direct execution and delegation
 import { delegateToSupervisor } from '../supervisorAgent';
 import { executeComplexTask } from '../executeComplexTaskTool';
+import { delegateToIntelligentSupervisor } from '../intelligentSupervisorTool'; // NEW: Unified supervisor
 import { checkInterviewStatus } from '../interviewTools';
 import { getCurrentUserInfo } from '../userInfoTool';
 
@@ -45,8 +46,9 @@ export const routerAgent = new RealtimeAgent({
     checkInterviewStatus,
 
     // Backend agents (возврат через response от fetch)
-    delegateToSupervisor,      // ← Tool call, возврат через response (Planning Agent)
-    executeComplexTask,        // ← Tool call, возврат через response (Complex Task Agent)
+    delegateToSupervisor,      // ← Tool call, возврат через response (Planning Agent - Path 4)
+    executeComplexTask,        // ← Tool call, возврат через response (Complex Task Agent - Path 5)
+    delegateToIntelligentSupervisor, // ← NEW: Unified intelligent supervisor (Path 6 - RECOMMENDED)
   ],
 });
 
