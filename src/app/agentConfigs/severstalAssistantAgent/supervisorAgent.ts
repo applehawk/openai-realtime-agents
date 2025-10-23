@@ -11,6 +11,8 @@ export interface SupervisorResponse {
   suggestedChanges?: string;
   reasoning: string;
   nextResponse?: string;
+  plannedSteps?: string[]; // OPTIONAL: For PLAN FIRST mode (future tense steps)
+  workflowSteps?: string[]; // REQUIRED for EXECUTE IMMEDIATELY mode (past tense steps)
 }
 
 /**
@@ -137,6 +139,26 @@ export const delegateToSupervisor = tool({
 
       if (addBreadcrumb) {
         addBreadcrumb('[Supervisor] Decision received', supervisorDecision);
+
+        // ✅ QW-3: Add breadcrumbs for each workflow step (if provided)
+        if (supervisorDecision.workflowSteps && supervisorDecision.workflowSteps.length > 0) {
+          supervisorDecision.workflowSteps.forEach((step: string, index: number) => {
+            addBreadcrumb(`[Supervisor] Шаг ${index + 1}/${supervisorDecision.workflowSteps!.length}`, {
+              step,
+              completed: true,
+            });
+          });
+          console.log(`[supervisorAgent] Added ${supervisorDecision.workflowSteps.length} workflow step breadcrumbs`);
+        }
+
+        // Add breadcrumbs for planned steps (if provided)
+        if (supervisorDecision.plannedSteps && supervisorDecision.plannedSteps.length > 0) {
+          addBreadcrumb('[Supervisor] План выполнения составлен', {
+            totalSteps: supervisorDecision.plannedSteps.length,
+            steps: supervisorDecision.plannedSteps,
+          });
+          console.log(`[supervisorAgent] Added plan with ${supervisorDecision.plannedSteps.length} steps`);
+        }
       }
 
       return supervisorDecision;

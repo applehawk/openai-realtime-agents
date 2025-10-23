@@ -22,7 +22,7 @@ export interface SupervisorResponse {
   reasoning: string;
   nextResponse?: string;
   plannedSteps?: string[]; // Optional: PLAN - steps to be executed (before execution, for user confirmation)
-  workflowSteps?: string[]; // Optional: REPORT - steps actually taken (after execution)
+  workflowSteps?: string[]; // REQUIRED for 'approve' EXECUTE IMMEDIATELY - steps actually taken (after execution)
 }
 
 /**
@@ -270,7 +270,7 @@ The JSON response must contain:
   "suggestedChanges": "Specific modifications needed (only for 'modify' decision)",
   "nextResponse": "Russian-language text for primary agent to speak to user (when applicable)",
   "plannedSteps": ["Future step 1", "Future step 2"] // OPTIONAL: For "approve" MODE 1 - PLAN before execution
-  "workflowSteps": ["Past step 1", "Past step 2"] // OPTIONAL: For "approve" MODE 2 - REPORT after execution
+  "workflowSteps": ["Past step 1", "Past step 2"] // REQUIRED: For "approve" MODE 2 - REPORT after execution (always include!)
 }
 
 **plannedSteps field (OPTIONAL, for "approve" decision in PLAN FIRST mode):**
@@ -288,12 +288,14 @@ The JSON response must contain:
 - "Отправлю email-приглашение Анне на anna@company.com с деталями встречи"
 - "Добавлю напоминание за 15 минут до начала встречи"
 
-**workflowSteps field (OPTIONAL, for "approve" decision in EXECUTE IMMEDIATELY mode):**
-- Use this field when decision is "approve" and you ALREADY EXECUTED multiple steps
+**workflowSteps field (REQUIRED, for "approve" decision in EXECUTE IMMEDIATELY mode):**
+- This field is REQUIRED when decision is "approve" and you ALREADY EXECUTED multiple steps
+- ALWAYS provide workflowSteps for transparency, debugging, and user visibility
+- Use this field even for simple 2-step tasks to maintain consistency
 - Provide a structured array of strings, each describing one action you TOOK
 - Format each step in Russian, PAST tense, concise (5-15 words)
 - Steps should be parseable and can be displayed in UI or logs
-- This allows primary agent to understand your workflow and potentially show progress to user
+- This allows primary agent to understand your workflow and show progress to user
 - DO NOT include plannedSteps when using workflowSteps (you already executed, don't plan)
 
 **Examples of good workflowSteps:**

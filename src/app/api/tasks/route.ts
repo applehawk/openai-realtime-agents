@@ -52,9 +52,17 @@ export async function POST(request: NextRequest) {
       {
         maxNestingLevel: 5,
         maxSubtasksPerTask: 10,
-        enableProgressCallbacks: false, // Disable for now (can enable with WebSocket)
+        enableProgressCallbacks: true, // ✅ ENABLED: Progress tracking for transparency and debugging
       },
-      undefined // Progress callback would go here
+      (update) => {
+        // Log progress for monitoring and debugging
+        console.log(
+          `[TaskProgress] ${update.type}: ${update.taskDescription} (${update.progress}%)`
+        );
+
+        // TODO: Send to UI via SSE/WebSocket for real-time updates
+        // Example: sse.send(JSON.stringify(update));
+      }
     );
 
     // Execute task
