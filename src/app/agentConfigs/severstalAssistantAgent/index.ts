@@ -10,9 +10,6 @@
  * Previous versions available in legacy/ folder for rollback
  */
 
-// Re-export the heuristic function for testing and external use
-export { shouldDelegateToSupervisor } from './supervisorAgent';
-
 // Import new multi-agent architecture
 import { routerAgent, routerScenario } from './agents/routerAgent';
 

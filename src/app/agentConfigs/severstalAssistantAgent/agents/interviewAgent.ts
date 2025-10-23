@@ -31,3 +31,8 @@ export const interviewAgent = new RealtimeAgent({
     // Note: checkInterviewStatus уже вызван Router Agent перед делегацией
   ],
 });
+
+// Function to configure bidirectional handoff after routerAgent is created
+export function setInterviewAgentHandoff(routerAgent: RealtimeAgent) {
+  interviewAgent.handoffs = [routerAgent];
+}

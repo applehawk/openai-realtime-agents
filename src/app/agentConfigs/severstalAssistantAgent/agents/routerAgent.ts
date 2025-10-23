@@ -12,13 +12,11 @@ import { hostedMcpTool } from '@openai/agents';
 import { routerAgentPrompt } from '../prompts/routerPrompt';
 
 // Specialized agents for handoffs
-import { knowledgeAgent } from './knowledgeAgent';
-import { interviewAgent } from './interviewAgent';
+import { knowledgeAgent, setKnowledgeAgentHandoff } from './knowledgeAgent';
+import { interviewAgent, setInterviewAgentHandoff } from './interviewAgent';
 
 // Tools for direct execution and delegation
-import { delegateToSupervisor } from '../supervisorAgent';
-import { executeComplexTask } from '../executeComplexTaskTool';
-import { delegateToIntelligentSupervisor } from '../intelligentSupervisorTool'; // NEW: Unified supervisor
+import { delegateToIntelligentSupervisor } from '../intelligentSupervisorTool'; // Unified supervisor
 import { checkInterviewStatus } from '../interviewTools';
 import { getCurrentUserInfo } from '../userInfoTool';
 
@@ -45,12 +43,14 @@ export const routerAgent = new RealtimeAgent({
     getCurrentUserInfo,
     checkInterviewStatus,
 
-    // Backend agents (возврат через response от fetch)
-    delegateToSupervisor,      // ← Tool call, возврат через response (Planning Agent - Path 4)
-    executeComplexTask,        // ← Tool call, возврат через response (Complex Task Agent - Path 5)
-    delegateToIntelligentSupervisor, // ← NEW: Unified intelligent supervisor (Path 6 - RECOMMENDED)
+    // Backend agent для всех многошаговых задач
+    delegateToIntelligentSupervisor, // ← Unified intelligent supervisor (Path 4)
   ],
 });
+
+// Configure bidirectional handoffs (specialized agents can transfer back to router)
+setKnowledgeAgentHandoff(routerAgent);
+setInterviewAgentHandoff(routerAgent);
 
 // Export scenario array for compatibility
 export const routerScenario = [routerAgent];

@@ -28,3 +28,8 @@ export const knowledgeAgent = new RealtimeAgent({
     lightragQueryData,
   ],
 });
+
+// Function to configure bidirectional handoff after routerAgent is created
+export function setKnowledgeAgentHandoff(routerAgent: RealtimeAgent) {
+  knowledgeAgent.handoffs = [routerAgent];
+}
