@@ -118,6 +118,16 @@ export const delegateToIntelligentSupervisor = tool({
     try {
       console.log('[intelligentSupervisorTool] Calling /api/supervisor/unified...');
 
+      // Generate sessionId for progress tracking
+      const sessionId = `session-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+
+      if (addBreadcrumb) {
+        addBreadcrumb('[Intelligent Supervisor] SSE прогресс доступен', {
+          sessionId,
+          streamUrl: `/api/supervisor/unified/stream?sessionId=${sessionId}`,
+        });
+      }
+
       // Call the unified intelligent supervisor endpoint
       const response = await fetch('/api/supervisor/unified', {
         method: 'POST',
@@ -128,6 +138,7 @@ export const delegateToIntelligentSupervisor = tool({
           executionMode: executionMode || 'auto',
           maxComplexity: 'hierarchical', // Allow full complexity range
           history,
+          sessionId, // Pass sessionId for SSE tracking
         }),
       });
 

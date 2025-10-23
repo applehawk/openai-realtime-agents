@@ -1,0 +1,99 @@
+/**
+ * useTaskProgress - React hook for tracking IntelligentSupervisor task progress
+ *
+ * This hook manages SSE connection lifecycle and provides progress state.
+ *
+ * Usage:
+ * const { progress, message, updates, isComplete, error } = useTaskProgress(sessionId);
+ *
+ * Version: 1.0
+ * Date: 2025-10-23
+ */
+
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+
+export interface ProgressUpdate {
+  sessionId: string;
+  type: 'connected' | 'started' | 'complexity_assessed' | 'strategy_selected' | 'step_started' | 'step_completed' | 'completed' | 'error';
+  message: string;
+  progress: number;
+  currentStep?: number;
+  totalSteps?: number;
+  details?: any;
+  timestamp: number;
+}
+
+export interface TaskProgressState {
+  progress: number;
+  message: string;
+  updates: ProgressUpdate[];
+  isConnected: boolean;
+  isComplete: boolean;
+  error: string | null;
+}
+
+export function useTaskProgress(sessionId: string | null): TaskProgressState {
+  const [state, setState] = useState<TaskProgressState>({
+    progress: 0,
+    message: '',
+    updates: [],
+    isConnected: false,
+    isComplete: false,
+    error: null,
+  });
+
+  const handleUpdate = useCallback((update: ProgressUpdate) => {
+    setState(prev => ({
+      ...prev,
+      progress: update.progress,
+      message: update.message,
+      updates: [...prev.updates, update],
+      isComplete: prev.isComplete || update.type === 'completed',
+      error: update.type === 'error' ? update.message : prev.error,
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+
+    console.log('[useTaskProgress] Connecting to SSE for session:', sessionId);
+
+    const eventSource = new EventSource(`/api/supervisor/unified/stream?sessionId=${sessionId}`);
+
+    eventSource.onopen = () => {
+      console.log('[useTaskProgress] SSE connection opened');
+      setState(prev => ({ ...prev, isConnected: true }));
+    };
+
+    eventSource.onmessage = (event) => {
+      try {
+        const update: ProgressUpdate = JSON.parse(event.data);
+        console.log('[useTaskProgress] Update:', update);
+        handleUpdate(update);
+      } catch (error) {
+        console.error('[useTaskProgress] Parse error:', error);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('[useTaskProgress] SSE error:', error);
+      setState(prev => ({
+        ...prev,
+        isConnected: false,
+        error: prev.error || 'Connection error',
+      }));
+      eventSource.close();
+    };
+
+    return () => {
+      console.log('[useTaskProgress] Cleanup: closing SSE');
+      eventSource.close();
+    };
+  }, [sessionId, handleUpdate]);
+
+  return state;
+}

@@ -299,9 +299,9 @@ export const delegateToIntelligentSupervisor = tool({
 
 ---
 
-## Phase 2: Enable Progress Tracking (1 неделя)
+## Phase 2: Enable Progress Tracking (1 неделя) ✅ COMPLETED
 
-### 📋 P2-1: Интегрировать SSE endpoint
+### ✅ P2-1: Интегрировать SSE endpoint
 
 **Новый файл:** `src/app/api/supervisor/unified/stream/route.ts`
 
@@ -331,7 +331,7 @@ export async function GET(req: NextRequest) {
 
 ---
 
-### 📋 P2-2: Frontend подписка на SSE
+### ✅ P2-2: Frontend подписка на SSE
 
 **Файл:** `src/app/components/TaskProgressIndicator.tsx` (новый компонент)
 
@@ -479,8 +479,8 @@ description: '[DEPRECATED] Use delegateToIntelligentSupervisor. Delegates comple
 - [ ] P1-4: Обновить routerPrompt.ts (добавить unified path)
 
 ### Phase 2
-- [ ] P2-1: Интегрировать SSE endpoint
-- [ ] P2-2: Frontend подписка на SSE
+- [x] P2-1: Интегрировать SSE endpoint
+- [x] P2-2: Frontend подписка на SSE
 
 ### Phase 3
 - [ ] P3-1: Добавить deprecation warnings

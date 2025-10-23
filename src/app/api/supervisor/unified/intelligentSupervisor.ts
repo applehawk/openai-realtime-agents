@@ -25,6 +25,7 @@ import {
   ReportGenerationRequest,
   FinalReport,
 } from '../taskTypes';
+import { progressEmitter, ProgressUpdate } from './progressEmitter';
 
 /**
  * Task complexity levels
@@ -49,6 +50,7 @@ export interface IntelligentSupervisorConfig {
   maxComplexity?: 'flat' | 'hierarchical';
   maxNestingLevel?: number;
   maxSubtasksPerTask?: number;
+  sessionId?: string; // For SSE progress tracking
 }
 
 /**
@@ -80,6 +82,7 @@ export interface UnifiedResponse {
  */
 export class IntelligentSupervisor {
   private config: Required<IntelligentSupervisorConfig>;
+  private sessionId: string;
 
   constructor(config?: IntelligentSupervisorConfig) {
     this.config = {
@@ -87,7 +90,30 @@ export class IntelligentSupervisor {
       maxComplexity: config?.maxComplexity ?? 'hierarchical',
       maxNestingLevel: config?.maxNestingLevel ?? 5,
       maxSubtasksPerTask: config?.maxSubtasksPerTask ?? 10,
+      sessionId: config?.sessionId ?? `session-${Date.now()}-${Math.random().toString(36).substring(7)}`,
     };
+    this.sessionId = this.config.sessionId;
+  }
+
+  /**
+   * Emit progress update via SSE
+   */
+  private emitProgress(
+    type: ProgressUpdate['type'],
+    message: string,
+    progress: number,
+    details?: any
+  ): void {
+    if (this.config.enableProgressCallbacks && this.sessionId) {
+      progressEmitter.emitProgress({
+        sessionId: this.sessionId,
+        type,
+        message,
+        progress,
+        details,
+        timestamp: Date.now(),
+      });
+    }
   }
 
   /**
@@ -97,20 +123,33 @@ export class IntelligentSupervisor {
     const startTime = Date.now();
     console.log('[IntelligentSupervisor] Starting execution:', request.taskDescription);
 
+    // Emit: Task started
+    this.emitProgress('started', 'Начинаю выполнение задачи...', 0, {
+      taskDescription: request.taskDescription,
+    });
+
     const executionMode = request.executionMode || 'auto';
 
     // Step 1: Assess complexity
+    this.emitProgress('complexity_assessed', 'Оцениваю сложность задачи...', 10);
     const complexityAssessment = await this.assessComplexity(
       request.taskDescription,
       request.conversationContext
     );
 
     console.log('[IntelligentSupervisor] Complexity assessment:', complexityAssessment);
+    this.emitProgress('complexity_assessed', `Сложность определена: ${complexityAssessment.complexity}`, 20, {
+      complexity: complexityAssessment.complexity,
+      reasoning: complexityAssessment.reasoning,
+    });
 
     // Step 2: Select strategy based on complexity and config
     const strategy = this.selectStrategy(complexityAssessment.complexity);
 
     console.log('[IntelligentSupervisor] Selected strategy:', strategy);
+    this.emitProgress('strategy_selected', `Стратегия выбрана: ${strategy}`, 30, {
+      strategy,
+    });
 
     // Step 3: Execute based on strategy and mode
     let result: UnifiedResponse;
@@ -153,6 +192,14 @@ export class IntelligentSupervisor {
       strategy: result.strategy,
       complexity: result.complexity,
       executionTime,
+    });
+
+    // Emit: Task completed
+    this.emitProgress('completed', 'Задача выполнена успешно', 100, {
+      strategy: result.strategy,
+      complexity: result.complexity,
+      executionTime,
+      workflowStepsCount: result.workflowSteps?.length || 0,
     });
 
     return result;
@@ -254,6 +301,7 @@ export class IntelligentSupervisor {
     complexity: TaskComplexity
   ): Promise<UnifiedResponse> {
     console.log('[IntelligentSupervisor] Executing directly (simple task)');
+    this.emitProgress('step_started', 'Выполняю простую задачу...', 40);
 
     const executionPrompt = `
 Выполни простую задачу:
@@ -292,6 +340,10 @@ export class IntelligentSupervisor {
 
       const execution = JSON.parse(jsonMatch[0]);
 
+      this.emitProgress('step_completed', 'Простая задача выполнена', 90, {
+        workflowSteps: execution.workflowSteps,
+      });
+
       return {
         strategy: 'direct',
         complexity,
@@ -302,6 +354,7 @@ export class IntelligentSupervisor {
       };
     } catch (error) {
       console.error('[IntelligentSupervisor] Direct execution error:', error);
+      this.emitProgress('error', `Ошибка выполнения: ${error instanceof Error ? error.message : 'Unknown'}`, 0, { error });
       throw error;
     }
   }
@@ -315,6 +368,7 @@ export class IntelligentSupervisor {
     complexity: TaskComplexity
   ): Promise<UnifiedResponse> {
     console.log('[IntelligentSupervisor] Executing flat workflow (medium task)');
+    this.emitProgress('step_started', 'Выполняю многошаговую задачу...', 40);
 
     // Reuse Path 4 logic: delegate to supervisorAgent with EXECUTE IMMEDIATELY mode
     const executionPrompt = `
@@ -359,6 +413,12 @@ export class IntelligentSupervisor {
 
       const execution = JSON.parse(jsonMatch[0]);
 
+      const stepCount = execution.workflowSteps?.length || 0;
+      this.emitProgress('step_completed', `Многошаговая задача выполнена (${stepCount} шагов)`, 90, {
+        workflowSteps: execution.workflowSteps,
+        stepCount,
+      });
+
       return {
         strategy: 'flat',
         complexity,
@@ -372,6 +432,7 @@ export class IntelligentSupervisor {
       };
     } catch (error) {
       console.error('[IntelligentSupervisor] Flat workflow error:', error);
+      this.emitProgress('error', `Ошибка выполнения: ${error instanceof Error ? error.message : 'Unknown'}`, 0, { error });
       throw error;
     }
   }
@@ -385,6 +446,7 @@ export class IntelligentSupervisor {
     complexity: TaskComplexity
   ): Promise<UnifiedResponse> {
     console.log('[IntelligentSupervisor] Executing hierarchically (complex task)');
+    this.emitProgress('step_started', 'Выполняю сложную задачу с иерархической декомпозицией...', 40);
 
     const orchestrator = new TaskOrchestrator(
       {
@@ -396,7 +458,11 @@ export class IntelligentSupervisor {
         console.log(
           `[IntelligentSupervisor] Progress: ${update.type} - ${update.taskDescription} (${update.progress}%)`
         );
-        // TODO: Send to SSE/WebSocket if needed
+        // Forward TaskOrchestrator progress to SSE
+        const progress = 40 + Math.floor((update.progress / 100) * 50); // Map 0-100 to 40-90
+        this.emitProgress('step_started', `${update.type}: ${update.taskDescription}`, progress, {
+          orchestratorUpdate: update,
+        });
       }
     );
 
@@ -407,6 +473,12 @@ export class IntelligentSupervisor {
       this.executeSingleTaskWithAgent.bind(this),
       this.generateReportWithSupervisor.bind(this)
     );
+
+    this.emitProgress('step_completed', `Сложная задача выполнена: ${report.tasksCompleted} подзадач`, 90, {
+      tasksCompleted: report.tasksCompleted,
+      tasksFailed: report.tasksFailed,
+      executionTime: report.executionTime,
+    });
 
     return {
       strategy: 'hierarchical',

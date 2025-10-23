@@ -31,13 +31,14 @@ import { IntelligentSupervisor, UnifiedRequest } from './intelligentSupervisor';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { taskDescription, conversationContext, executionMode, maxComplexity, history } = body;
+    const { taskDescription, conversationContext, executionMode, maxComplexity, history, sessionId } = body;
 
     console.log('[API /api/supervisor/unified] Request received:', {
       taskDescription: taskDescription?.substring(0, 100) + '...',
       executionMode: executionMode || 'auto',
       maxComplexity: maxComplexity || 'hierarchical',
       historyLength: history?.length || 0,
+      sessionId: sessionId || 'auto-generated',
     });
 
     // Validate required parameters
@@ -73,12 +74,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create IntelligentSupervisor with config
+    // Create IntelligentSupervisor with config (including sessionId for SSE)
     const supervisor = new IntelligentSupervisor({
       enableProgressCallbacks: true,
       maxComplexity: maxComplexity || 'hierarchical',
       maxNestingLevel: 5,
       maxSubtasksPerTask: 10,
+      sessionId: sessionId, // Pass sessionId for SSE progress tracking
     });
 
     // Build unified request
@@ -101,7 +103,11 @@ export async function POST(req: NextRequest) {
       workflowStepsCount: result.workflowSteps.length,
     });
 
-    return NextResponse.json(result);
+    // Return result with sessionId for SSE subscription
+    return NextResponse.json({
+      ...result,
+      sessionId: supervisor['sessionId'], // Include sessionId in response for client
+    });
   } catch (error) {
     console.error('[API /api/supervisor/unified] Error:', error);
 
