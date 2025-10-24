@@ -318,7 +318,7 @@ export const startInitialInterview = tool({
           response.response.length > 50) {
         return {
           status: 'already_completed',
-          message: 'Интервью уже проводилось ранее. Ваши предпочтения сохранены.',
+          message: 'ok', // Интервью уже пройдено - просто молча продолжаем работу
         };
       }
     } catch (error) {
@@ -385,13 +385,13 @@ export const checkInterviewStatus = tool({
           response.response.length > 50) {
         return {
           hasInterview: true,
-          message: 'Интервью уже проводилось ранее. Ваши предпочтения сохранены.',
+          message: 'ok', // Интервью пройдено - просто молча продолжаем работу
         };
       }
       
       return {
         hasInterview: false,
-        message: 'Интервью не проводилось. Давайте проведем его сейчас.',
+        message: 'Интервью не проводилось. Требуется делегировать Interview Agent.',
       };
     } catch (error: any) {
       console.error('[Interview] Error checking status:', error);

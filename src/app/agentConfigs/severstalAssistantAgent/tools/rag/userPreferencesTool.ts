@@ -1,11 +1,74 @@
 import { tool } from '@openai/agents/realtime';
 
+// Use API proxy endpoint for client-side execution
+const RAG_API_PROXY = '/api/rag';
+
+/**
+ * Helper function to call RAG MCP server via JSON-RPC through API proxy
+ */
+async function callRagServerForPreferences(query: string, workspace: string) {
+  try {
+    console.log(`[UserPreferences] Querying workspace: ${workspace}`);
+
+    const response = await fetch(RAG_API_PROXY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: Date.now(),
+        method: 'tools/call',
+        params: {
+          name: 'lightrag_query',
+          arguments: {
+            query,
+            mode: 'local',
+            top_k: 3,
+            workspace,
+            include_references: true,
+          },
+        },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`RAG server returned status ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(`RAG server error: ${data.error.message || JSON.stringify(data.error)}`);
+    }
+
+    // Extract text content from MCP response format
+    if (data.result?.content?.[0]?.text) {
+      return data.result.content[0].text;
+    }
+
+    return JSON.stringify(data.result || data);
+  } catch (error: any) {
+    console.error(`[UserPreferences] Error:`, error);
+    throw new Error(`Ошибка подключения к базе знаний: ${error.message}`);
+  }
+}
+
 /**
  * Tool for querying user preferences from their personal workspace
  */
 export const queryUserPreferences = tool({
   name: 'queryUserPreferences',
-  description: 'Запросить предпочтения пользователя из его персонального workspace',
+  description: `Запросить предпочтения и профиль пользователя из его персонального workspace.
+  
+Используйте этот инструмент для получения информации о:
+- Стиле коммуникации пользователя
+- Предпочитаемом времени для встреч
+- Ключевых компетенциях и областях экспертизы
+- Карьерных целях
+- Рабочем стиле и подходе к задачам
+- Времени для фокусной работы
+
+Эта информация помогает персонализировать ответы и учитывать предпочтения пользователя.`,
   parameters: {
     type: 'object',
     properties: {
@@ -15,7 +78,7 @@ export const queryUserPreferences = tool({
       },
       query: {
         type: 'string',
-        description: 'Запрос о предпочтениях пользователя',
+        description: 'Конкретный запрос о предпочтениях. Примеры: "стиль коммуникации", "предпочтения по встречам", "компетенции", "все предпочтения"',
       },
     },
     required: ['userId', 'query'],
@@ -26,31 +89,25 @@ export const queryUserPreferences = tool({
     
     try {
       const workspaceName = `${userId}_user_key_preferences`;
+      const result = await callRagServerForPreferences(query, workspaceName);
       
-      // Call RAG API directly with user's workspace
-      const response = await fetch('http://79.132.139.57:9621/query', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: query,
-          mode: 'local',
-          top_k: 3,
-          workspace: workspaceName,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`RAG API error: ${response.status}`);
+      // Try to parse JSON response
+      try {
+        const parsed = JSON.parse(result);
+        if (parsed.response) {
+          return {
+            success: true,
+            response: parsed.response,
+            workspace: workspaceName,
+          };
+        }
+      } catch {
+        // Not JSON, return as is
       }
-
-      const data = await response.json();
       
       return {
         success: true,
-        response: data.response || 'Данные не найдены',
-        references: data.references || [],
+        response: result || 'Данные не найдены',
         workspace: workspaceName,
       };
     } catch (error: any) {
@@ -58,7 +115,6 @@ export const queryUserPreferences = tool({
       return {
         success: false,
         response: `Ошибка при запросе предпочтений: ${error.message}`,
-        references: [],
         workspace: `${userId}_user_key_preferences`,
       };
     }
