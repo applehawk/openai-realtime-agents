@@ -78,8 +78,8 @@ export async function POST(req: NextRequest) {
     const supervisor = new IntelligentSupervisor({
       enableProgressCallbacks: true,
       maxComplexity: maxComplexity || 'hierarchical',
-      maxNestingLevel: 1,
-      maxSubtasksPerTask: 7,
+      maxNestingLevel: 3,
+      maxSubtasksPerTask: 12,
       sessionId: sessionId, // Pass sessionId for SSE progress tracking
     });
 
