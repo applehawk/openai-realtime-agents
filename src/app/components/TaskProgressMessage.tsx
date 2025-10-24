@@ -3,16 +3,18 @@
  *
  * This component displays task progress as a message in the chat transcript.
  * It subscribes to SSE updates and updates the progress bar in real-time.
+ * Includes interactive task tree visualization.
  *
- * Version: 2.0 - Integrated into chat
- * Date: 2025-10-23
+ * Version: 2.1 - Added task tree visualization
+ * Date: 2025-10-24
  */
 
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranscript } from '@/app/contexts/TranscriptContext';
 import { useTaskProgress } from '@/app/hooks/useTaskProgress';
+import { TaskTreeView, TaskNode } from './TaskTreeView';
 
 export interface TaskProgressMessageProps {
   sessionId: string;
@@ -20,6 +22,7 @@ export interface TaskProgressMessageProps {
   timestamp: string;
   initialProgress?: number;
   initialMessage?: string;
+  hierarchicalBreakdown?: any; // Hierarchical task breakdown from IntelligentSupervisor
 }
 
 export function TaskProgressMessage({
@@ -28,9 +31,11 @@ export function TaskProgressMessage({
   timestamp,
   initialProgress = 0,
   initialMessage = 'Инициализация задачи...',
+  hierarchicalBreakdown,
 }: TaskProgressMessageProps) {
   const { updateTaskProgress } = useTranscript();
-  const { progress, message, isComplete, error } = useTaskProgress(sessionId);
+  const { progress, message, isComplete, error, updates } = useTaskProgress(sessionId);
+  const [taskTree, setTaskTree] = useState<TaskNode | undefined>(hierarchicalBreakdown);
 
   // Update transcript context when progress changes
   useEffect(() => {
@@ -38,6 +43,25 @@ export function TaskProgressMessage({
       updateTaskProgress(sessionId, progress, message || initialMessage);
     }
   }, [progress, message, sessionId, updateTaskProgress, initialMessage]);
+
+  // Extract task tree from progress updates
+  useEffect(() => {
+    // Look for hierarchicalBreakdown in progress updates (get the LATEST one)
+    // Iterate in reverse to find most recent update with tree
+    for (let i = updates.length - 1; i >= 0; i--) {
+      if (updates[i].details?.hierarchicalBreakdown) {
+        const newTree = updates[i].details.hierarchicalBreakdown;
+        console.log('[TaskProgressMessage] Updating tree from update:', {
+          updateType: updates[i].type,
+          eventType: updates[i].details?.eventType,
+          taskId: newTree.taskId,
+          subtasksCount: newTree.subtasks?.length || 0,
+        });
+        setTaskTree(newTree);
+        break; // Stop after finding the latest one
+      }
+    }
+  }, [updates]);
 
   const displayProgress = progress || initialProgress;
   const displayMessage = message || initialMessage;
@@ -98,6 +122,9 @@ export function TaskProgressMessage({
             Ошибка: {error}
           </div>
         )}
+
+        {/* Task Tree Visualization */}
+        <TaskTreeView taskTree={taskTree} sessionId={sessionId} />
 
         {/* Session ID (for debugging) */}
         {process.env.NODE_ENV === 'development' && (
