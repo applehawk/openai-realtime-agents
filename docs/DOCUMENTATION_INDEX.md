@@ -47,10 +47,24 @@
 
 ### Специализированные модули
 
-| Документ | Кому | Что |
-|----------|------|-----|
-| [mcp/](./currentImplementation/mcp/) | Engineers | MCP integration |
-| [intelligentSupervisorAgent/](./currentImplementation/intelligentSupervisorAgent/) | Engineers | Intelligent supervisor |
+| Документ | Кому | Что | Время |
+|----------|------|-----|-------|
+| [mcp/](./currentImplementation/mcp/) | Engineers | MCP integration | 15 мин |
+
+### Intelligent Supervisor Agent
+
+**Расположение:** [`docs/currentImplementation/intelligentSupervisorAgent/`](./currentImplementation/intelligentSupervisorAgent/)
+
+| Документ | Кому | Что | Время |
+|----------|------|-----|-------|
+| [README.md](./currentImplementation/intelligentSupervisorAgent/README.md) | All engineers | Обзор, интеграция, примеры использования | 20 мин |
+| [ARCHITECTURE.md](./currentImplementation/intelligentSupervisorAgent/ARCHITECTURE.md) | Engineers, architects | Детальная архитектура, диаграммы, data flow | 25 мин |
+| [SUPERVISOR_PROMPT_GUIDE.md](./currentImplementation/intelligentSupervisorAgent/SUPERVISOR_PROMPT_GUIDE.md) | Prompt engineers | Полное руководство по supervisorAgentInstructions | 30 мин |
+| [TASK_ORCHESTRATOR_INTEGRATION.md](./currentImplementation/intelligentSupervisorAgent/TASK_ORCHESTRATOR_INTEGRATION.md) | Engineers | Интеграция с TaskOrchestrator для иерархических задач | 15 мин |
+| [PROGRESS_TRACKING.md](./currentImplementation/intelligentSupervisorAgent/PROGRESS_TRACKING.md) | Engineers | SSE прогресс-трекинг implementation | 10 мин |
+| [AGENT_ARCHITECTURE_DECISION.md](./currentImplementation/intelligentSupervisorAgent/AGENT_ARCHITECTURE_DECISION.md) | Architects, tech leads | Решение: один агент vs 7 агентов (architectural analysis) | 25 мин |
+
+**Итого:** 6 документов, ~125 минут
 
 ---
 

@@ -20,7 +20,13 @@
   - [Supervised Agents](./currentImplementation/agents/supervised/README.md) — документация по supervised агентам
 - [**Severstal Assistant**](./currentImplementation/severstal-assistant-agent-prompt-documentation.md) — документация основного агента
 - [**MCP Integration**](./currentImplementation/mcp/) — интеграция с Model Context Protocol
-- [**Intelligent Supervisor**](./currentImplementation/intelligentSupervisorAgent/) — документация intelligent supervisor
+- [**Intelligent Supervisor**](./currentImplementation/intelligentSupervisorAgent/) — унифицированная система делегирования задач
+  - [README](./currentImplementation/intelligentSupervisorAgent/README.md) — обзор и интеграция
+  - [Architecture](./currentImplementation/intelligentSupervisorAgent/ARCHITECTURE.md) — диаграммы и data flow
+  - [Supervisor Prompt Guide](./currentImplementation/intelligentSupervisorAgent/SUPERVISOR_PROMPT_GUIDE.md) — промпт-инженеринг
+  - [Task Orchestrator Integration](./currentImplementation/intelligentSupervisorAgent/TASK_ORCHESTRATOR_INTEGRATION.md) — иерархическая система
+  - [Progress Tracking](./currentImplementation/intelligentSupervisorAgent/PROGRESS_TRACKING.md) — SSE прогресс-трекинг
+  - [Agent Architecture Decision](./currentImplementation/intelligentSupervisorAgent/AGENT_ARCHITECTURE_DECISION.md) — почему один агент, а не 7
 
 ### 📊 Отчеты об изменениях
 **[changeReports/](./changeReports/)** — история завершенных изменений и миграций
