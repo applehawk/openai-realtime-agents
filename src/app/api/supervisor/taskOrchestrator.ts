@@ -45,6 +45,8 @@ export type ProgressCallback = (update: {
   progress: number;                     // 0-100
   currentTask?: string;                 // Description of current task
   result?: string;                      // Result if completed
+  task?: Task;                          // Current task with subtasks (for breakdown_completed)
+  rootTask?: Task;                      // Root task with full hierarchy (for breakdown_completed)
 }) => void;
 
 /**
@@ -53,6 +55,7 @@ export type ProgressCallback = (update: {
 export class TaskOrchestrator {
   private config: OrchestratorConfig;
   private progressCallback?: ProgressCallback;
+  private rootTask?: Task; // Reference to root task for progress callbacks
 
   constructor(config?: Partial<OrchestratorConfig>, progressCallback?: ProgressCallback) {
     this.config = {
@@ -67,7 +70,11 @@ export class TaskOrchestrator {
   /**
    * Execute a complex task from start to finish
    *
-   * Main entry point for task execution
+   * NEW LOGIC (v2.0):
+   * - Execute recursively (not break down everything first)
+   * - Decompose only when needed
+   * - Use subtask results as context for parent task
+   * - Minimize unnecessary decomposition (expensive!)
    */
   async executeComplexTask(
     taskDescription: string,
@@ -89,34 +96,26 @@ export class TaskOrchestrator {
       subtasks: [],
     };
 
+    // Store root task reference for progress callbacks
+    this.rootTask = rootTask;
+
     // 2. Initialize task tree
     const taskTree: TaskTree = {
       rootTask,
       allTasks: new Map([[rootTask.id, rootTask]]),
       executionOrder: [],
       currentTaskId: null,
-      totalTasks: 0,
+      totalTasks: 1,
       completedTasks: 0,
       failedTasks: 0,
       conversationHistory: [conversationContext],
     };
 
-    // 3. Break down root task recursively
-    await this.breakdownTaskRecursively(rootTask, taskTree, conversationContext, breakdownFn);
+    // 3. Execute root task RECURSIVELY
+    // This will handle decomposition, execution, and context accumulation
+    await this.executeTaskRecursively(rootTask, taskTree, conversationContext, breakdownFn, executeFn);
 
-    // 4. Calculate execution order
-    taskTree.executionOrder = TaskManager.calculateExecutionOrder(rootTask);
-    taskTree.totalTasks = TaskManager.getLeafTasks(rootTask).length;
-
-    console.log('[TaskOrchestrator] Task breakdown complete:', {
-      totalLeafTasks: taskTree.totalTasks,
-      executionOrder: taskTree.executionOrder,
-    });
-
-    // 5. Execute tasks in order
-    await this.executeTasksInOrder(taskTree, conversationContext, executeFn, breakdownFn);
-
-    // 6. Generate final report
+    // 4. Generate final report
     const report = await this.generateFinalReport(taskTree, conversationContext, reportFn);
 
     console.log('[TaskOrchestrator] Task execution complete:', {
@@ -129,7 +128,228 @@ export class TaskOrchestrator {
   }
 
   /**
+   * Execute task recursively with context accumulation
+   * 
+   * NEW APPROACH (v2.0):
+   * 1. Ask supervisor: does this task need decomposition?
+   * 2. If NO → execute directly
+   * 3. If YES → decompose → execute subtasks → collect context → execute parent task with context
+   */
+  private async executeTaskRecursively(
+    task: Task,
+    taskTree: TaskTree,
+    conversationContext: string,
+    breakdownFn: (req: TaskBreakdownRequest) => Promise<TaskBreakdownResponse>,
+    executeFn: (req: TaskExecutionRequest) => Promise<TaskExecutionResponse>
+  ): Promise<void> {
+    console.log(`[TaskOrchestrator] Executing task recursively: ${task.id} - ${task.description}`);
+
+    // Check nesting level limit
+    if (task.level >= this.config.maxNestingLevel) {
+      console.log(`[TaskOrchestrator] Max nesting level reached for task ${task.id}, executing directly`);
+      await this.executeTaskDirectly(task, taskTree, conversationContext, executeFn);
+      return;
+    }
+
+    // Ask supervisor: should we break down this task?
+    this.notifyProgress({
+      type: 'breakdown_started',
+      taskId: task.id,
+      taskDescription: task.description,
+      progress: TaskManager.calculateProgress(taskTree),
+    });
+
+    const breakdownRequest: TaskBreakdownRequest = {
+      task,
+      conversationContext,
+      previousResults: task.parentId
+        ? taskTree.allTasks.get(task.parentId)?.subtaskResults
+        : undefined,
+    };
+
+    console.log(`[TaskOrchestrator] Requesting breakdown decision for task ${task.id}`);
+    const breakdown = await breakdownFn(breakdownRequest);
+
+    // CASE 1: Task doesn't need breakdown → execute directly
+    if (!breakdown.shouldBreakdown) {
+      console.log(`[TaskOrchestrator] Task ${task.id} doesn't need breakdown, executing directly`);
+      await this.executeTaskDirectly(task, taskTree, conversationContext, executeFn);
+      return;
+    }
+
+    // CASE 2: Task needs breakdown → decompose, execute subtasks, gather context, execute parent
+    if (!breakdown.subtasks || breakdown.subtasks.length === 0) {
+      console.log(`[TaskOrchestrator] No subtasks provided for task ${task.id}, executing directly`);
+      await this.executeTaskDirectly(task, taskTree, conversationContext, executeFn);
+      return;
+    }
+
+    // Decompose: Create subtasks
+    const subtaskDescriptions = breakdown.subtasks.slice(0, this.config.maxSubtasksPerTask);
+    console.log(`[TaskOrchestrator] Breaking down task ${task.id} into ${subtaskDescriptions.length} subtasks`);
+
+    for (let i = 0; i < subtaskDescriptions.length; i++) {
+      const subtaskDesc = subtaskDescriptions[i];
+      const subtaskId = TaskManager.generateTaskId(task.id, i);
+
+      const subtask: Task = {
+        id: subtaskId,
+        parentId: task.id,
+        description: subtaskDesc.description,
+        complexity: subtaskDesc.estimatedComplexity,
+        status: 'planned',
+        level: task.level + 1,
+        subtasks: [],
+        dependencies: subtaskDesc.dependencies?.map(depIdx =>
+          TaskManager.generateTaskId(task.id, depIdx)
+        ),
+      };
+
+      task.subtasks.push(subtask);
+      taskTree.allTasks.set(subtaskId, subtask);
+    }
+
+    // Notify: breakdown completed
+    this.notifyProgress({
+      type: 'breakdown_completed',
+      taskId: task.id,
+      taskDescription: task.description,
+      progress: TaskManager.calculateProgress(taskTree),
+      task: task,
+      rootTask: this.rootTask,
+    });
+
+    // Execute subtasks recursively (each may decompose further)
+    const subtaskResults: string[] = [];
+    for (const subtask of task.subtasks) {
+      await this.executeTaskRecursively(subtask, taskTree, conversationContext, breakdownFn, executeFn);
+      
+      // Collect result from completed subtask
+      if (subtask.status === 'completed' && subtask.result) {
+        subtaskResults.push(`${subtask.description}: ${subtask.result}`);
+      }
+    }
+
+    // Store subtask results for parent task execution
+    task.subtaskResults = subtaskResults;
+
+    // NOW execute parent task WITH CONTEXT from subtasks
+    console.log(`[TaskOrchestrator] Executing parent task ${task.id} with context from ${subtaskResults.length} subtasks`);
+    await this.executeTaskDirectly(task, taskTree, conversationContext, executeFn);
+  }
+
+  /**
+   * Execute task directly (without decomposition)
+   */
+  private async executeTaskDirectly(
+    task: Task,
+    taskTree: TaskTree,
+    conversationContext: string,
+    executeFn: (req: TaskExecutionRequest) => Promise<TaskExecutionResponse>
+  ): Promise<void> {
+    console.log(`[TaskOrchestrator] Executing task directly: ${task.id}`);
+
+    // Mark as in progress
+    task.status = 'in_progress';
+    task.executionStartTime = new Date();
+    taskTree.currentTaskId = task.id;
+
+    // Notify progress with tree update
+    this.notifyProgress({
+      type: 'task_started',
+      taskId: task.id,
+      taskDescription: task.description,
+      progress: TaskManager.calculateProgress(taskTree),
+      currentTask: task.description,
+      task: task,
+      rootTask: this.rootTask,
+    });
+
+    // Build execution context from subtask results
+    const subtaskContext = task.subtaskResults?.length
+      ? `\n\nКонтекст из подзадач:\n${task.subtaskResults.join('\n')}`
+      : '';
+
+    // Execute task with accumulated context
+    const executionRequest: TaskExecutionRequest = {
+      task,
+      conversationContext: conversationContext + subtaskContext,
+      previousResults: task.subtaskResults,
+      siblingContext: task.subtaskResults?.join('\n'),
+    };
+
+    try {
+      const response = await executeFn(executionRequest);
+
+      if (response.status === 'completed') {
+        task.status = 'completed';
+        task.result = response.result;
+        task.executionEndTime = new Date();
+        taskTree.completedTasks++;
+
+        console.log(`[TaskOrchestrator] Task ${task.id} completed successfully`);
+
+        // Notify progress with tree update
+        this.notifyProgress({
+          type: 'task_completed',
+          taskId: task.id,
+          taskDescription: task.description,
+          progress: TaskManager.calculateProgress(taskTree),
+          result: response.result,
+          task: task,
+          rootTask: this.rootTask,
+        });
+
+        // Update parent's subtask results
+        if (task.parentId) {
+          const parent = taskTree.allTasks.get(task.parentId);
+          if (parent) {
+            if (!parent.subtaskResults) parent.subtaskResults = [];
+            parent.subtaskResults.push(`${task.description}: ${task.result}`);
+          }
+        }
+      } else {
+        // Task failed
+        task.status = 'failed';
+        task.error = response.error || 'Unknown error';
+        task.executionEndTime = new Date();
+        taskTree.failedTasks++;
+
+        console.error(`[TaskOrchestrator] Task ${task.id} failed:`, response.error);
+
+        // Notify progress with tree update
+        this.notifyProgress({
+          type: 'task_failed',
+          taskId: task.id,
+          taskDescription: task.description,
+          progress: TaskManager.calculateProgress(taskTree),
+          task: task,
+          rootTask: this.rootTask,
+        });
+      }
+    } catch (error) {
+      task.status = 'failed';
+      task.error = error instanceof Error ? error.message : 'Unknown error';
+      task.executionEndTime = new Date();
+      taskTree.failedTasks++;
+
+      console.error(`[TaskOrchestrator] Task ${task.id} execution error:`, error);
+
+      this.notifyProgress({
+        type: 'task_failed',
+        taskId: task.id,
+        taskDescription: task.description,
+        progress: TaskManager.calculateProgress(taskTree),
+        task: task,
+        rootTask: this.rootTask,
+      });
+    }
+  }
+
+  /**
    * Recursively break down a task into subtasks
+   * 
+   * @deprecated - Use executeTaskRecursively instead (v2.0)
    */
   private async breakdownTaskRecursively(
     task: Task,
@@ -188,7 +408,7 @@ export class TaskOrchestrator {
 
     console.log(`[TaskOrchestrator] Breaking down task ${task.id} into ${subtaskDescriptions.length} subtasks`);
 
-    // Create subtasks
+    // Create all subtasks first (without recursion)
     for (let i = 0; i < subtaskDescriptions.length; i++) {
       const subtaskDesc = subtaskDescriptions[i];
       const subtaskId = TaskManager.generateTaskId(task.id, i);
@@ -208,18 +428,24 @@ export class TaskOrchestrator {
 
       task.subtasks.push(subtask);
       taskTree.allTasks.set(subtaskId, subtask);
-
-      // Recursively break down subtask if needed
-      await this.breakdownTaskRecursively(subtask, taskTree, conversationContext, breakdownFn);
     }
 
-    // Notify progress
+    // Notify progress IMMEDIATELY after creating subtasks (before recursion)
+    // This allows UI to see the tree incrementally as each node is broken down
     this.notifyProgress({
       type: 'breakdown_completed',
       taskId: task.id,
       taskDescription: task.description,
       progress: TaskManager.calculateProgress(taskTree),
+      task: task, // Current task with its newly created subtasks
+      rootTask: this.rootTask, // Full hierarchy for UI
     });
+
+    // NOW recursively break down each subtask
+    for (const subtask of task.subtasks) {
+      await this.breakdownTaskRecursively(subtask, taskTree, conversationContext, breakdownFn);
+    }
+
   }
 
   /**
@@ -269,13 +495,15 @@ export class TaskOrchestrator {
     task.executionStartTime = new Date();
     taskTree.currentTaskId = task.id;
 
-    // Notify progress
+    // Notify progress with tree update
     this.notifyProgress({
       type: 'task_started',
       taskId: task.id,
       taskDescription: task.description,
       progress: TaskManager.calculateProgress(taskTree),
       currentTask: task.description,
+      task: task,
+      rootTask: this.rootTask, // Send full tree so UI can show status change
     });
 
     // Collect context from completed sibling tasks
@@ -300,13 +528,15 @@ export class TaskOrchestrator {
 
         console.log(`[TaskOrchestrator] Task ${task.id} completed successfully`);
 
-        // Notify progress
+        // Notify progress with tree update
         this.notifyProgress({
           type: 'task_completed',
           taskId: task.id,
           taskDescription: task.description,
           progress: TaskManager.calculateProgress(taskTree),
           result: response.result,
+          task: task,
+          rootTask: this.rootTask, // Send full tree so UI can show completed status
         });
 
         // Update parent's subtask results
@@ -320,12 +550,14 @@ export class TaskOrchestrator {
 
         console.error(`[TaskOrchestrator] Task ${task.id} failed:`, response.error);
 
-        // Notify progress
+        // Notify progress with tree update
         this.notifyProgress({
           type: 'task_failed',
           taskId: task.id,
           taskDescription: task.description,
           progress: TaskManager.calculateProgress(taskTree),
+          task: task,
+          rootTask: this.rootTask, // Send full tree so UI can show failed status
         });
 
         // If task needs refinement, try breaking it down
