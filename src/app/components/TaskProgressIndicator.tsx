@@ -13,7 +13,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 
 export interface ProgressUpdate {
   sessionId: string;
@@ -43,17 +43,29 @@ export function TaskProgressIndicator({
   const [isConnected, setIsConnected] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [receivedStartedEvent, setReceivedStartedEvent] = useState(false);
+
+  // Use refs to track completion state in event handlers (avoid stale closures)
+  const isCompletedRef = useRef(false);
+  const hasErrorRef = useRef(false);
 
   const handleUpdate = useCallback((update: ProgressUpdate) => {
     setProgress(update.progress);
     setCurrentMessage(update.message);
     setUpdates(prev => [...prev, update]);
 
+    // Track if we received 'started' event to know task actually began
+    if (update.type === 'started') {
+      setReceivedStartedEvent(true);
+    }
+
     if (update.type === 'completed') {
       setIsCompleted(true);
+      isCompletedRef.current = true; // Update ref for event handlers
       onComplete?.();
     } else if (update.type === 'error') {
       setHasError(true);
+      hasErrorRef.current = true; // Update ref for event handlers
       onError?.(update.message);
     }
   }, [onComplete, onError]);
@@ -88,10 +100,20 @@ export function TaskProgressIndicator({
       console.error('[TaskProgressIndicator] SSE error:', error);
       setIsConnected(false);
 
-      // Don't treat auto-close as error if task completed
-      if (!isCompleted) {
+      // Determine if this is a real error or just normal stream closure
+      // Use refs to avoid stale closure values
+      const taskCompleted = isCompletedRef.current;
+      const taskHasError = hasErrorRef.current;
+
+      if (!taskCompleted && !taskHasError) {
+        // Real error: connection failed before receiving completion events
+        console.warn('[TaskProgressIndicator] Connection closed unexpectedly');
         setHasError(true);
-        onError?.('Connection error');
+        hasErrorRef.current = true;
+        onError?.('Соединение прервано. Попробуйте повторить запрос.');
+      } else {
+        // Normal closure after completion or explicit error
+        console.log('[TaskProgressIndicator] SSE stream closed normally after task completion');
       }
 
       eventSource.close();
