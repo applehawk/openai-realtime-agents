@@ -2,72 +2,120 @@
 
 Документация для проекта демонстрации advanced voice agent patterns с OpenAI Realtime API.
 
-**Последнее обновление:** 2025-10-22
+**Последнее обновление:** 2025-10-24
 
 **📋 Полный индекс:** [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md) — все документы с reading paths
 
 ---
 
-## 📚 Документация
+## 📚 Структура документации
 
-### Agents
-- [**Agents Documentation**](./agents/README.md) — документация по всем агентам
-  - [Realtime Agent Prompts](./agents/realtime/prompts/README.md) — анализ и best practices для промптов
+### 📖 Текущая реализация
+**[currentImplementation/](./currentImplementation/)** — актуальная документация по архитектуре и агентам
 
-### Architecture & Refactoring
-- [SUPERVISED-AGENT-REFACTORING.md](./SUPERVISED-AGENT-REFACTORING.md) — Refactoring supervisor agent (EN)
-- [SUPERVISED-AGENT-REFACTORING.ru.md](./SUPERVISED-AGENT-REFACTORING.ru.md) — Refactoring supervisor agent (RU)
+- [**Architecture**](./currentImplementation/ARCHITECTURE.md) — общая архитектура проекта
+- [**Testing Guide**](./currentImplementation/TESTING_GUIDE.md) — руководство по тестированию
+- [**Agents Documentation**](./currentImplementation/agents/README.md) — документация по всем агентам
+  - [Realtime Agent Prompts](./currentImplementation/agents/realtime/prompts/README.md) — best practices для промптов
+  - [Supervised Agents](./currentImplementation/agents/supervised/README.md) — документация по supervised агентам
+- [**Severstal Assistant**](./currentImplementation/severstal-assistant-agent-prompt-documentation.md) — документация основного агента
+- [**MCP Integration**](./currentImplementation/mcp/) — интеграция с Model Context Protocol
+- [**Intelligent Supervisor**](./currentImplementation/intelligentSupervisorAgent/) — документация intelligent supervisor
+
+### 📊 Отчеты об изменениях
+**[changeReports/](./changeReports/)** — история завершенных изменений и миграций
+
+- [**Phase 1 Completed**](./changeReports/PHASE1_COMPLETED.md) — отчет о завершении Phase 1
+- [**Phase 2 Summary**](./changeReports/PHASE2_SUMMARY.md) — краткий отчет Phase 2
+- [**Phase 2 Completed**](./changeReports/PHASE2_COMPLETED.md) — полный отчет Phase 2
+- [**Phase 2 Implementation**](./changeReports/PHASE2_IMPLEMENTATION_REPORT.md) — детали реализации
+- [**UI Integration**](./changeReports/UI_INTEGRATION_COMPLETED.md) — интеграция UI компонентов
+- [**Cleanup Summary**](./changeReports/CLEANUP_FINAL_SUMMARY.md) — отчет о рефакторинге
+- [**Final Summary**](./changeReports/FINAL_SUMMARY.md) — итоговый отчет проекта
+
+### 🎯 Планируемые изменения
+**[plannedChanges/](./plannedChanges/)** — документация по планируемым и предложенным изменениям
+
+- [**Delegation Analysis**](./plannedChanges/DELEGATION_ANALYSIS.md) — анализ паттернов делегирования
+- [**Delegation Flow Diagram**](./plannedChanges/DELEGATION_FLOW_DIAGRAM.md) — диаграммы потоков делегирования
+- [**Agent Decomposition**](./plannedChanges/agent-decomposition-final.md) — финальный план декомпозиции агентов
+- [**Suggested Changes**](./plannedChanges/suggested-changes/) — предложенные изменения
+
+### 🗄️ Устаревшая документация
+**[legacy/](./legacy/)** — устаревшая документация для справки
+
+- [**Legacy Tools Removal**](./legacy/LEGACY_TOOLS_REMOVAL.md) — удаление устаревших инструментов
+- [**Supervised Agent Refactoring**](./legacy/SUPERVISED-AGENT-REFACTORING.md) — старый подход к рефакторингу
+- [**Phase 2 Debug Instructions**](./legacy/PHASE2_DEBUG_INSTRUCTIONS.md) — устаревшие инструкции отладки
 
 ---
 
 ## 🚀 Быстрый старт
 
+### Если вы новичок в проекте:
+
+1. [**Project Overview**](../CLAUDE.md) — общее понимание архитектуры (10 мин)
+2. [**Architecture**](./currentImplementation/ARCHITECTURE.md) — детальная архитектура (15 мин)
+3. [**Agents Overview**](./currentImplementation/agents/README.md) — обзор агентов (5 мин)
+
 ### Если вы работаете с промптами для RealtimeAgent:
 
 **Шпаргалка (5 минут):**
-→ [Quick Reference: Best Practices](./agents/realtime/prompts/QUICK_REFERENCE.md)
+→ [Quick Reference: Best Practices](./currentImplementation/agents/realtime/prompts/QUICK_REFERENCE.md)
 
 **Пример улучшения промпта:**
-→ [Executive Summary](./agents/realtime/prompts/EXECUTIVE_SUMMARY.md) — как улучшить промпт на основе best practices
+→ [Executive Summary](./currentImplementation/agents/realtime/prompts/EXECUTIVE_SUMMARY.md)
 
 **Детальный анализ:**
-→ [Prompt Analysis](./agents/realtime/prompts/PROMPT_ANALYSIS.md) — разбор 10 критических проблем
-
----
+→ [Prompt Analysis](./currentImplementation/agents/realtime/prompts/PROMPT_ANALYSIS.md)
 
 ### Если вы добавляете нового агента:
 
 1. Создайте файл агента в `src/app/agentConfigs/yourAgent/`
 2. Следуйте структуре из [CLAUDE.md](../CLAUDE.md#adding-a-new-agent-scenario)
-3. Используйте checklist из [Quick Reference](./agents/realtime/prompts/QUICK_REFERENCE.md)
+3. Используйте checklist из [Quick Reference](./currentImplementation/agents/realtime/prompts/QUICK_REFERENCE.md)
 4. Задокументируйте промпт и design decisions
 
----
+### Если вы хотите понять историю изменений:
 
-### Если вы рефакторите supervisor pattern:
-
-→ [Supervised Agent Refactoring](./SUPERVISED-AGENT-REFACTORING.md) — детальный гайд
+→ [Change Reports](./changeReports/) — все завершенные изменения и миграции
 
 ---
 
-## 📖 Структура документации
+## 📖 Полная структура документации
 
 ```
 docs/
-├── README.md                                 # Этот файл — навигация
-├── SUPERVISED-AGENT-REFACTORING.md           # Refactoring supervisor (EN)
-├── SUPERVISED-AGENT-REFACTORING.ru.md        # Refactoring supervisor (RU)
-└── agents/
-    ├── README.md                             # Обзор всех агентов
-    └── realtime/
-        └── prompts/                          # Документация по промптам
-            ├── README.md                     # Навигация
-            ├── EXECUTIVE_SUMMARY.md          # Краткие выводы
-            ├── PROMPT_ANALYSIS.md            # Детальный анализ
-            ├── PROMPT_COMPARISON.md          # v1.0 vs v2.0
-            ├── QUICK_REFERENCE.md            # Шпаргалка best practices
-            ├── EMAIL_READING_VERIFICATION.md # Feature verification
-            └── DEPLOYMENT.md                 # Deployment guide
+├── README.md                           # Этот файл — навигация
+├── DOCUMENTATION_INDEX.md              # Детальный индекс всех документов
+│
+├── currentImplementation/              # 📖 Текущая реализация
+│   ├── ARCHITECTURE.md
+│   ├── TESTING_GUIDE.md
+│   ├── severstal-assistant-agent-prompt-documentation.md
+│   ├── agents/                        # Документация по агентам
+│   │   ├── README.md
+│   │   ├── supervised/                # Supervised agents
+│   │   └── realtime/prompts/          # Realtime agent prompts
+│   ├── mcp/                           # MCP integration
+│   └── intelligentSupervisorAgent/    # Intelligent supervisor
+│
+├── changeReports/                      # 📊 Отчеты об изменениях
+│   ├── PHASE1_COMPLETED.md
+│   ├── PHASE2_*.md                    # Phase 2 отчеты
+│   ├── UI_INTEGRATION_COMPLETED.md
+│   ├── CLEANUP_FINAL_SUMMARY.md
+│   └── FINAL_SUMMARY.md
+│
+├── plannedChanges/                     # 🎯 Планируемые изменения
+│   ├── DELEGATION_*.md                # Delegation паттерны
+│   ├── agent-decomposition-*.md       # Agent decomposition
+│   └── suggested-changes/             # Предложенные изменения
+│
+└── legacy/                             # 🗄️ Устаревшая документация
+    ├── SUPERVISED-AGENT-REFACTORING.md
+    ├── LEGACY_TOOLS_REMOVAL.md
+    └── delegation/                     # Старая документация delegation
 ```
 
 ---
@@ -107,7 +155,7 @@ docs/
 9. State management rules
 10. Zero conflicting instructions
 
-**Подробнее:** [Quick Reference](./agents/realtime/prompts/QUICK_REFERENCE.md)
+**Подробнее:** [Quick Reference](./currentImplementation/agents/realtime/prompts/QUICK_REFERENCE.md)
 
 ---
 
@@ -125,6 +173,12 @@ docs/
 
 ## 📝 Changelog
 
+### 2025-10-24
+- ✅ Реорганизация документации по категориям
+- ✅ Создана структура `currentImplementation/`, `changeReports/`, `plannedChanges/`, `legacy/`
+- ✅ Перемещены все файлы в соответствующие категории
+- ✅ Обновлен README.md с новой структурой навигации
+
 ### 2025-10-22
 - ✅ Создана структура `docs/agents/realtime/prompts/`
 - ✅ Добавлена документация по улучшению промптов (7 документов)
@@ -139,5 +193,7 @@ docs/
 
 **Навигация:**
 - [← Back to Project Root](../README.md)
-- [Agents Documentation →](./agents/README.md)
-- [Realtime Prompts →](./agents/realtime/prompts/README.md)
+- [Current Implementation →](./currentImplementation/)
+- [Change Reports →](./changeReports/)
+- [Planned Changes →](./plannedChanges/)
+- [Legacy Documentation →](./legacy/)
