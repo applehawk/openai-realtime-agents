@@ -26,7 +26,6 @@
 
 import { run } from '@openai/agents';
 import {
-  supervisorAgent,
   decisionAgent,
   executorAgent,
   complexityAssessorAgent,
@@ -45,6 +44,7 @@ import {
   FinalReport,
 } from '../taskTypes';
 import { progressEmitter, ProgressUpdate } from './progressEmitter';
+import { taskContextStore } from './taskContextStore';
 
 /**
  * Task complexity levels
@@ -132,6 +132,20 @@ export class IntelligentSupervisor {
         details,
         timestamp: Date.now(),
       });
+
+      // Update task context store if details contain hierarchicalBreakdown
+      if (details?.hierarchicalBreakdown) {
+        taskContextStore.setContext(this.sessionId, {
+          hierarchicalBreakdown: details.hierarchicalBreakdown,
+          progress: {
+            current: 0,
+            total: 0,
+            percentage: progress,
+          },
+          strategy: details.strategy,
+          complexity: details.complexity,
+        });
+      }
     }
   }
 
@@ -296,6 +310,12 @@ Analyze this task and determine complexity level (simple/medium/complex).
   /**
    * Strategy 1: Direct execution (simple tasks) using WorkflowOrchestratorAgent (v3.0)
    * 
+   * WHY WorkflowOrchestrator?
+   * - ROOT LEVEL task (user's direct request)
+   * - NO context from other tasks
+   * - Simple task that doesn't need decomposition
+   * - Agent plans and executes independently
+   * 
    * v3.0: Now uses specialized WorkflowOrchestratorAgent
    * Token savings: ~2100 tokens per call (vs supervisorAgent)
    */
@@ -303,7 +323,8 @@ Analyze this task and determine complexity level (simple/medium/complex).
     request: UnifiedRequest,
     complexity: TaskComplexity
   ): Promise<UnifiedResponse> {
-    console.log('[IntelligentSupervisor] Executing directly with WorkflowOrchestratorAgent...');
+    console.log('[IntelligentSupervisor] Executing directly with WorkflowOrchestratorAgent (ROOT LEVEL, simple task)...');
+    
     this.emitProgress('step_started', 'Выполняю простую задачу...', 40);
 
     // v3.0: Simplified prompt - agent already knows how to execute workflows
@@ -349,6 +370,8 @@ Execute this simple task directly using MCP tools.
       this.emitProgress('step_completed', 'Простая задача выполнена', 90, {
         workflowSteps: execution.workflowSteps,
         hierarchicalBreakdown: taskTree,
+        strategy: 'direct',
+        complexity: 'simple',
       });
 
       return {
@@ -370,6 +393,13 @@ Execute this simple task directly using MCP tools.
   /**
    * Strategy 2: Flat workflow execution (medium tasks) using WorkflowOrchestratorAgent (v3.0)
    * 
+   * WHY WorkflowOrchestrator?
+   * - ROOT LEVEL task (user's direct request)
+   * - NO context from other tasks
+   * - Medium complexity workflow (3-5 sequential steps)
+   * - Agent plans multi-step workflow independently
+   * - Handles conditional logic and data synthesis
+   * 
    * v3.0: Now uses specialized WorkflowOrchestratorAgent for multi-step coordination
    * Token savings: ~2050 tokens per call (vs supervisorAgent)
    */
@@ -377,7 +407,8 @@ Execute this simple task directly using MCP tools.
     request: UnifiedRequest,
     complexity: TaskComplexity
   ): Promise<UnifiedResponse> {
-    console.log('[IntelligentSupervisor] Executing flat workflow with WorkflowOrchestratorAgent...');
+    console.log('[IntelligentSupervisor] Executing flat workflow with WorkflowOrchestratorAgent (ROOT LEVEL, medium task)...');
+    
     this.emitProgress('step_started', 'Выполняю многошаговую задачу...', 40);
 
     // v3.0: Simplified prompt - agent knows how to orchestrate multi-step workflows
@@ -412,6 +443,14 @@ Execute this multi-step workflow using MCP tools. Provide comprehensive results 
         toolsUsed: execution.toolsUsed?.length || 0,
       });
       
+      const subtasks = (execution.workflowSteps || []).map((step: string, idx: number) => ({
+        taskId: `task-root.${idx}`,
+        description: step,
+        status: 'completed' as const,
+        complexity: 'simple' as const,
+        result: step,
+      }));
+      
       const taskTree = {
         taskId: 'task-root',
         description: request.taskDescription,
@@ -419,19 +458,15 @@ Execute this multi-step workflow using MCP tools. Provide comprehensive results 
         complexity: 'medium' as const,
         executionStrategy: 'flat' as const,
         result: execution.result,
-        subtasks: (execution.workflowSteps || []).map((step: string, idx: number) => ({
-          taskId: `task-root.${idx}`,
-          description: step,
-          status: 'completed' as const,
-          complexity: 'simple' as const,
-          result: step,
-        })),
+        subtasks,
       };
 
       this.emitProgress('step_completed', `Многошаговая задача выполнена (${stepCount} шагов)`, 90, {
         workflowSteps: execution.workflowSteps,
         stepCount,
         hierarchicalBreakdown: taskTree,
+        strategy: 'flat',
+        complexity: 'medium',
       });
 
       return {
@@ -713,17 +748,30 @@ OR (редко!):
 
   /**
    * Helper: Execute single task using ExecutorAgent (for hierarchical execution)
-   * NEW (v2.0): Use specialized ExecutorAgent optimized for direct task execution
+   * 
+   * WHY ExecutorAgent?
+   * - INSIDE HIERARCHY (complex root task decomposed into subtasks)
+   * - HAS CONTEXT from parent/sibling tasks (previousResults, subtaskResults)
+   * - Either LEAF task execution OR AGGREGATION of subtask results
+   * - Works at ANY nesting level (1, 2, 3, etc.)
+   * - Uses accumulated context for better decisions
+   * 
+   * ExecutorAgent has TWO modes:
+   * 1. Aggregation: if task.subtaskResults exists → synthesize results
+   * 2. Leaf execution: if NO subtaskResults → execute task directly (can do 2-3 step workflows)
+   * 
+   * NEW (v2.0): Use specialized ExecutorAgent optimized for hierarchical execution
    */
   private async executeSingleTaskWithAgent(
     request: TaskExecutionRequest
   ): Promise<TaskExecutionResponse> {
     const { task, conversationContext, previousResults } = request;
 
-    console.log('[IntelligentSupervisor] Executing with ExecutorAgent:', {
+    console.log('[IntelligentSupervisor] Executing with ExecutorAgent (HIERARCHICAL, level=' + task.level + '):', {
       task: task.description,
       hasSubtaskResults: !!task.subtaskResults,
       hasPreviousResults: !!previousResults && previousResults.length > 0,
+      mode: task.subtaskResults ? 'AGGREGATION' : 'LEAF EXECUTION',
     });
 
     const executionPrompt = `

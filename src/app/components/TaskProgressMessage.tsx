@@ -124,7 +124,7 @@ export function TaskProgressMessage({
         )}
 
         {/* Task Tree Visualization */}
-        <TaskTreeView taskTree={taskTree} sessionId={sessionId} />
+        <TaskTreeView taskTree={taskTree} />
 
         {/* Session ID (for debugging) */}
         {process.env.NODE_ENV === 'development' && (

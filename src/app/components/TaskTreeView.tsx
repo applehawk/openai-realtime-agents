@@ -17,7 +17,7 @@ export type TaskComplexity = 'simple' | 'medium' | 'complex' | 'moderate';
 export type ExecutionStrategy = 'direct' | 'flat' | 'hierarchical';
 export type ExecutionMode = 'auto' | 'plan' | 'execute';
 export type SupervisorDecision = 'approve' | 'modify' | 'reject' | 'delegateBack';
-export type TaskStatus = 'planned' | 'in_progress' | 'completed' | 'failed' | 'blocked';
+export type TaskStatus = 'planned' | 'in_progress' | 'completed' | 'failed' | 'blocked' | 'skipped';
 
 export interface TaskNode {
   taskId: string;
@@ -35,7 +35,6 @@ export interface TaskNode {
 
 export interface TaskTreeViewProps {
   taskTree?: TaskNode;
-  sessionId?: string;
 }
 
 // Icon mappings
@@ -71,6 +70,7 @@ const statusIcons: Record<TaskStatus, { icon: string; color: string }> = {
   completed: { icon: '✅', color: 'text-green-500' },
   failed: { icon: '❌', color: 'text-red-500' },
   blocked: { icon: '🚫', color: 'text-orange-500' },
+  skipped: { icon: '⏭️', color: 'text-purple-500' },
 };
 
 /**
@@ -122,6 +122,7 @@ function TaskNodeView({
           ${node.status === 'in_progress' ? 'bg-blue-50 border border-blue-200' : ''}
           ${node.status === 'completed' ? 'bg-green-50' : ''}
           ${node.status === 'failed' ? 'bg-red-50 border border-red-200' : ''}
+          ${node.status === 'skipped' ? 'bg-purple-50 border border-purple-200' : ''}
         `}
         onClick={() => hasSubtasks && setIsExpanded(!isExpanded)}
       >
@@ -227,7 +228,7 @@ function TaskNodeView({
 /**
  * Main TaskTreeView component
  */
-export function TaskTreeView({ taskTree, sessionId }: TaskTreeViewProps) {
+export function TaskTreeView({ taskTree }: TaskTreeViewProps) {
   if (!taskTree) {
     return (
       <div className="text-sm text-gray-500 italic p-3 bg-gray-50 rounded-lg">
@@ -253,20 +254,13 @@ export function TaskTreeView({ taskTree, sessionId }: TaskTreeViewProps) {
             <span title="Стратегия">➡️ прямое | 📋 плоское | 🌳 иерархия</span>
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <span title="Статус">⏳ план | 🔄 выполн. | ✅ готово | ❌ ошибка</span>
+            <span title="Статус">⏳ план | 🔄 выполн. | ✅ готово | ❌ ошибка | ⏭️ пропущено</span>
           </div>
         </div>
       </div>
 
       {/* Task Tree */}
       <TaskNodeView node={taskTree} depth={0} />
-
-      {/* Debug Info (development only) */}
-      {process.env.NODE_ENV === 'development' && sessionId && (
-        <div className="mt-3 pt-2 border-t border-gray-200 text-xs text-gray-400 font-mono">
-          Session: {sessionId}
-        </div>
-      )}
     </div>
   );
 }

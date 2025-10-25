@@ -16,7 +16,8 @@ export type TaskStatus =
   | 'in_progress'  // Task is currently being executed
   | 'completed'    // Task completed successfully
   | 'failed'       // Task failed to complete
-  | 'blocked';     // Task is blocked by dependencies
+  | 'blocked'      // Task is blocked by dependencies
+  | 'skipped';     // Task skipped based on context (adaptive execution)
 
 /**
  * Task complexity determines execution strategy
