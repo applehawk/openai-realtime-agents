@@ -218,6 +218,12 @@ function App() {
             addTranscriptBreadcrumb,
             addTaskProgressMessage,
             updateTaskProgress,
+            // Allow agents to access task context from IntelligentSupervisor
+            getTaskContext: async (sessionId: string) => {
+              // Import dynamically to avoid circular dependencies
+              const { taskContextStore } = await import('./api/supervisor/unified/taskContextStore');
+              return taskContextStore.getContext(sessionId);
+            },
           },
           model: "gpt-realtime",
         });

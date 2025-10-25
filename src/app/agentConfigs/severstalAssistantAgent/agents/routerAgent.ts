@@ -20,6 +20,7 @@ import { delegateToIntelligentSupervisor } from '../tools/intelligentSupervisorT
 import { checkInterviewStatus } from '../tools/interviewTools';
 import { getCurrentUserInfo } from '../tools/userInfoTool';
 import { queryUserPreferences } from '../tools/rag/userPreferencesTool';
+import { getTaskContext } from '../tools/getTaskContextTool';
 
 export const routerAgent = new RealtimeAgent({
   name: 'routerAgent',
@@ -47,6 +48,9 @@ export const routerAgent = new RealtimeAgent({
 
     // Backend agent для всех многошаговых задач
     delegateToIntelligentSupervisor, // ← Unified intelligent supervisor (Path 4)
+    
+    // Task context для получения состояния выполняемых задач
+    getTaskContext, // ← Получить состояние задачи по sessionId
   ],
 });
 

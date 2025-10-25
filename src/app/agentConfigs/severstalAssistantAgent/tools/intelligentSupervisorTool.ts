@@ -133,6 +133,9 @@ export const delegateToIntelligentSupervisor = tool({
         });
       }
 
+      // Store sessionId in tool result so agent can use getTaskContext later
+      console.log('[intelligentSupervisorTool] Returning sessionId for context access:', sessionId);
+
       // Call the unified intelligent supervisor endpoint
       const response = await fetch('/api/supervisor/unified', {
         method: 'POST',
@@ -211,6 +214,7 @@ export const delegateToIntelligentSupervisor = tool({
 
       return {
         success: true,
+        sessionId, // ← IMPORTANT: Agent can use this with getTaskContext tool
         strategy: result.strategy,
         complexity: result.complexity,
         nextResponse: result.nextResponse,
