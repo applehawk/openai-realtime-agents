@@ -743,7 +743,7 @@ export const manageUserInterview = tool({
         return {
           interviewStatus: 'complete',
           completeness,
-          message: 'Профиль полный - все предпочтения доступны',
+          message: 'Все необходимые данные собраны, можно переходить к задачам',
           preferences,
           workspace: workspaceName,
           filledFields: filledFields.length,
