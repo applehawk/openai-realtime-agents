@@ -15,7 +15,7 @@ import { EventEmitter } from 'events';
  */
 export interface ProgressUpdate {
   sessionId: string;
-  type: 'started' | 'complexity_assessed' | 'strategy_selected' | 'step_started' | 'step_completed' | 'completed' | 'error';
+  type: 'started' | 'delegation_review' | 'delegate_back' | 'complexity_assessed' | 'strategy_selected' | 'step_started' | 'step_completed' | 'completed' | 'error';
   message: string;
   progress: number; // 0-100
   currentStep?: number;

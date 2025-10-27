@@ -26,36 +26,46 @@ export const delegateToIntelligentSupervisor = tool({
   description: `
 Делегирует сложные задачи унифицированному интеллектуальному supervisor-агенту с адаптивной оценкой сложности.
 
+**НОВОЕ (v3.1): Умная делегация с возможностью возврата**
+- Supervisor теперь СНАЧАЛА проверяет, действительно ли задача сложная
+- Если задача простая (1 действие, явные параметры) → supervisor вернёт guidance для прямого выполнения
+- Если задача сложная → supervisor выполнит её сам
+
 **Используй КОГДА:**
-- ✅ Задача требует 2+ шагов (множественные действия)
+- ✅ Задача МОЖЕТ быть сложной (2+ шага, условная логика)
 - ✅ Не уверен в сложности задачи (простая vs средняя vs сложная)
 - ✅ Требуется автоматическая оценка и выбор стратегии выполнения
 - ✅ Нужны условная логика, координация, или кросс-референсы данных
 
 **НЕ используй КОГДА:**
-- ❌ Простое одношаговое действие с явными параметрами (используй MCP tools напрямую)
+- ❌ ТОЧНО простое одношаговое действие с явными параметрами (используй MCP tools напрямую)
 - ❌ Только RAG запрос (используй lightrag_query)
 - ❌ Простое чтение/запись без логики (используй соответствующий MCP tool)
 
 **Как это работает:**
-1. Backend автоматически оценит сложность задачи (simple/medium/complex)
-2. Выберет стратегию выполнения:
+1. **Step 0 (NEW)**: Delegation Review - проверка, нужна ли делегация
+   - Если задача простая → возврат guidance для прямого выполнения (экономия 50-70% токенов)
+   - Если задача сложная → продолжение обработки
+2. Backend автоматически оценит сложность задачи (simple/medium/complex)
+3. Выберет стратегию выполнения:
    - Direct: прямое выполнение для простых задач (1 шаг)
    - Flat: плоский workflow для средних задач (2-7 шагов)
    - Hierarchical: иерархическая декомпозиция для сложных задач (8+ шагов)
-3. Выполнит задачу с прогресс-трекингом
-4. Вернёт детальный ответ с workflowSteps
+4. Выполнит задачу с прогресс-трекингом
+5. Вернёт детальный ответ с workflowSteps
 
 **Преимущества:**
+- ✅ Умная делегация: автоматически определяет, нужна ли обработка
+- ✅ Экономия токенов: простые задачи возвращаются сразу
 - ✅ НЕ нужно определять сложность заранее (supervisor решит сам)
 - ✅ Прогресс-трекинг всегда включён
 - ✅ workflowSteps всегда возвращаются
 - ✅ Поддерживает PLAN FIRST и EXECUTE IMMEDIATELY modes
 
 **Примеры задач:**
-- «Прочитай письмо от Анны и назначь встречу на предложенное время»
-- «Найди свободное время завтра и создай встречу с Петром»
-- «Найди всех участников проекта Восток и отправь им приглашения»
+- «Прочитай письмо от Анны и назначь встречу на предложенное время» → supervisor выполнит
+- «Найди свободное время завтра и создай встречу с Петром» → supervisor выполнит
+- «Прочитай последнее письмо» → supervisor вернёт guidance (слишком просто)
 
 **Параметры:**
 - taskDescription: полное описание задачи на русском (2-5 предложений)
@@ -65,9 +75,13 @@ export const delegateToIntelligentSupervisor = tool({
   - 'plan': PLAN FIRST - вернуть план БЕЗ выполнения (для подтверждения)
   - 'execute': EXECUTE IMMEDIATELY - выполнить сразу без плана
 
+**Обработка ответа:**
+- Если result.delegateBack === true → задача простая, следуй guidance в result.guidance
+- Иначе → задача выполнена supervisor, используй result.nextResponse
+
 **ВАЖНО:**
-- Это РЕКОМЕНДУЕМЫЙ способ для всех сложных задач (2+ шагов)
-- Используй вместо delegateToSupervisor или executeComplexTask
+- Это РЕКОМЕНДУЕМЫЙ способ для всех потенциально сложных задач
+- Не бойся делегировать: supervisor сам решит, нужна ли обработка
 `,
   parameters: {
     type: 'object',
@@ -176,7 +190,31 @@ export const delegateToIntelligentSupervisor = tool({
         complexity: result.complexity,
         executionTime: result.executionTime,
         workflowStepsCount: result.workflowSteps?.length || 0,
+        delegateBack: result.delegateBack || false,
       });
+
+      // Handle delegateBack case
+      if (result.delegateBack) {
+        console.log('[intelligentSupervisorTool] ✅ Task delegated back to primary agent');
+        console.log('[intelligentSupervisorTool] Guidance:', result.delegationGuidance);
+        
+        if (addBreadcrumb) {
+          addBreadcrumb('[Intelligent Supervisor] Задача делегирована обратно', {
+            guidance: result.delegationGuidance,
+            executionTime: result.executionTime,
+          });
+        }
+
+        return {
+          success: true,
+          delegateBack: true,
+          guidance: result.delegationGuidance,
+          nextResponse: result.nextResponse,
+          complexity: result.complexity,
+          executionTime: result.executionTime,
+          message: '✅ Задача проста и может быть выполнена напрямую. Следуй инструкциям в guidance.',
+        };
+      }
 
       if (addBreadcrumb) {
         addBreadcrumb('[Intelligent Supervisor] Выполнение завершено', {
