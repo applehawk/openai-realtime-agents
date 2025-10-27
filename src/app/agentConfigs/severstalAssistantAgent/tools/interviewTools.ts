@@ -359,75 +359,45 @@ export const validateInterviewAnswer = tool({
     const { question, userAnswer, questionNumber } = input;
     
     try {
-      // Call OpenAI API for validation
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      console.log(`[Interview] Validating answer for question ${questionNumber}:`, userAnswer);
+      
+      // Call our API endpoint for validation
+      const response = await fetch('/api/validate-answer', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: `Вы эксперт по анализу ответов в интервью. Ваша задача - определить качество ответа пользователя.
-
-Критерии качественного ответа:
-- Длина: минимум 10-15 слов
-- Релевантность: ответ соответствует вопросу
-- Информативность: содержит конкретные детали, не общие фразы
-- Осмысленность: логичный, понятный ответ
-
-Критерии некачественного ответа:
-- Слишком короткий (менее 10 слов)
-- Не релевантный вопросу
-- Общие фразы без деталей ("не знаю", "как обычно", "по-разному")
-- Бессмысленный или неразборчивый текст
-
-Верните JSON:
-{
-  "isValid": true/false,
-  "reason": "краткое объяснение",
-  "suggestion": "предложение для переформулировки вопроса (если isValid = false)"
-}`
-            },
-            {
-              role: 'user',
-              content: `Вопрос ${questionNumber}: ${question}
-
-Ответ пользователя: ${userAnswer}
-
-Проанализируйте качество ответа.`
-            }
-          ],
-          temperature: 0.3,
+          question,
+          userAnswer,
+          questionNumber,
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`[Interview] Validation API error: ${response.status} - ${errorText}`);
+        throw new Error(`Validation API error: ${response.status} - ${errorText}`);
       }
 
-      const data = await response.json();
-      const validationResult = JSON.parse(data.choices[0].message.content);
-
+      const validationResult = await response.json();
       console.log(`[Interview] Validation result for question ${questionNumber}:`, validationResult);
 
-      return {
-        isValid: validationResult.isValid,
-        reason: validationResult.reason,
-        suggestion: validationResult.suggestion || null,
-        questionNumber,
-        userAnswer,
-      };
+      return validationResult;
     } catch (error: any) {
       console.error('[Interview] Error validating answer:', error);
-      // Fallback: consider answer valid if validation fails
+      // Fallback: use simple validation if API fails - be very permissive
+      // Only reject obviously meaningless responses
+      const isObviouslyMeaningless = userAnswer.match(/^(ля-ля-ля|раз два три|один два три|абвгд|qwerty|asdfgh)$/i) || 
+                                     userAnswer.trim().length < 2 ||
+                                     /^[^а-яё\s]+$/i.test(userAnswer); // Only non-Cyrillic characters
+      
       return {
-        isValid: true,
-        reason: 'Ошибка валидации, считаем ответ валидным',
-        suggestion: null,
+        isValid: !isObviouslyMeaningless,
+        reason: !isObviouslyMeaningless ? 
+          'Простая валидация: ответ принят' : 
+          'Простая валидация: ответ слишком бессмысленный',
+        suggestion: isObviouslyMeaningless ? 'Пожалуйста, дайте осмысленный ответ' : null,
         questionNumber,
         userAnswer,
       };
