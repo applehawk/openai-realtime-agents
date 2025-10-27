@@ -11,7 +11,7 @@ import { RealtimeAgent } from '@openai/agents/realtime';
 import { interviewAgentPrompt } from '../prompts/interviewPrompt';
 import { getCurrentUserInfo } from '../tools/interview/userInfoTool';
 import {
-  startInitialInterview,
+  manageUserInterview,
   conductInitialInterview,
   validateInterviewAnswer,
 } from '../tools/interview/interviewTools';
@@ -27,7 +27,7 @@ export const interviewAgent = new RealtimeAgent({
 
   tools: [
     getCurrentUserInfo,
-    startInitialInterview,
+    manageUserInterview, // ← Универсальный инструмент для управления интервью и получения предпочтений
     conductInitialInterview,
     validateInterviewAnswer, // ← Валидация качества ответов пользователя
     // Note: checkInterviewStatus уже вызван Router Agent перед делегацией

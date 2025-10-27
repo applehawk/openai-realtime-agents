@@ -151,54 +151,95 @@ async function checkInterviewStatus(userId: string) {
       const filledFields = [];
       const missingFields = [];
       
-      // Check preference categories with controlled concurrency to avoid RAG server conflicts
+      // Check preference categories sequentially with 50ms delay between requests
       const results = [];
-      const batchSize = 3; // Process 3 categories at a time
       
-      for (let i = 0; i < preferenceCategories.length; i += batchSize) {
-        const batch = preferenceCategories.slice(i, i + batchSize);
+      for (let i = 0; i < preferenceCategories.length; i++) {
+        const category = preferenceCategories[i];
         
-        const batchPromises = batch.map(async (category) => {
+        try {
+          console.log(`[Interview API] Checking ${category} (${i + 1}/${preferenceCategories.length})`);
+          
+          const categoryResponse = await callRagApiDirect('/query', 'POST', {
+            query: `${category} пользователя ${userId}`,
+            mode: 'local',
+            top_k: 1,
+            workspace: workspaceName,
+          });
+          
+          // Check if we got meaningful data for this category
+          if (categoryResponse && categoryResponse.response && 
+              !categoryResponse.response.includes('не располагаю достаточной информацией') &&
+              !categoryResponse.response.includes('не найдено') &&
+              categoryResponse.response.length > 20) {
+            console.log(`[Interview API] ✅ Found data for ${category}: ${categoryResponse.response.length} chars`);
+            results.push({ category, found: true });
+          } else {
+            console.log(`[Interview API] ❌ No data for ${category}`);
+            results.push({ category, found: false });
+          }
+        } catch (error) {
+          console.log(`[Interview API] Error checking ${category}:`, error);
+          results.push({ category, found: false });
+        }
+        
+        // 50ms delay between requests to prevent server overload
+        if (i < preferenceCategories.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+      
+      // Process results and count found fields
+      let foundCount = 0;
+      const notFoundCategories = [];
+      
+      for (const result of results) {
+        if (result.found) {
+          filledFields.push({ key: result.category });
+          foundCount++;
+        } else {
+          missingFields.push({ key: result.category });
+          notFoundCategories.push(result.category);
+        }
+      }
+      
+      // Fallback: if at least half (4/7) categories were found, retry the missing ones
+      if (foundCount >= 4 && notFoundCategories.length > 0) {
+        console.log(`[Interview API] Fallback: Found ${foundCount}/7 categories, retrying ${notFoundCategories.length} missing ones`);
+        
+        for (const category of notFoundCategories) {
           try {
-            const categoryResponse = await callRagApiDirect('/query', 'POST', {
+            console.log(`[Interview API] Retry checking ${category}`);
+            
+            const retryResponse = await callRagApiDirect('/query', 'POST', {
               query: `${category} пользователя ${userId}`,
               mode: 'local',
               top_k: 1,
               workspace: workspaceName,
             });
             
-            // Check if we got meaningful data for this category
-            if (categoryResponse && categoryResponse.response && 
-                !categoryResponse.response.includes('не располагаю достаточной информацией') &&
-                !categoryResponse.response.includes('не найдено') &&
-                categoryResponse.response.length > 20) {
-              console.log(`[Interview API] ✅ Found data for ${category}: ${categoryResponse.response.length} chars`);
-              return { category, found: true };
+            // Check if retry was successful
+            if (retryResponse && retryResponse.response && 
+                !retryResponse.response.includes('не располагаю достаточной информацией') &&
+                !retryResponse.response.includes('не найдено') &&
+                retryResponse.response.length > 20) {
+              console.log(`[Interview API] ✅ Retry successful for ${category}: ${retryResponse.response.length} chars`);
+              filledFields.push({ key: category });
+              foundCount++;
+              // Remove from missing fields
+              const index = missingFields.findIndex(field => field.key === category);
+              if (index > -1) {
+                missingFields.splice(index, 1);
+              }
             } else {
-              console.log(`[Interview API] ❌ No data for ${category}`);
-              return { category, found: false };
+              console.log(`[Interview API] ❌ Retry failed for ${category}`);
             }
           } catch (error) {
-            console.log(`[Interview API] Error checking ${category}:`, error);
-            return { category, found: false };
+            console.log(`[Interview API] Error retrying ${category}:`, error);
           }
-        });
-        
-        const batchResults = await Promise.all(batchPromises);
-        results.push(...batchResults);
-        
-        // Small delay between batches to prevent server overload
-        if (i + batchSize < preferenceCategories.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
-      
-      // Process results
-      for (const result of results) {
-        if (result.found) {
-          filledFields.push({ key: result.category });
-        } else {
-          missingFields.push({ key: result.category });
+          
+          // 50ms delay between retry requests
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
       }
       
