@@ -7,6 +7,8 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -14,10 +16,11 @@ services:
       - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED:-0}
       - RAG_SERVER_URL=${RAG_SERVER_URL:-http://79.132.139.57:8000/mcp}
       - RAG_API_BASE_URL=${RAG_API_BASE_URL:-http://79.132.139.57:9621}
-      - RAG_API_TIMEOUT=${RAG_API_TIMEOUT:-30000}
-      - RAG_API_RETRY_ATTEMPTS=${RAG_API_RETRY_ATTEMPTS:-3}
-    env_file:
-      - .env
+      - RAG_API_TIMEOUT=${RAG_API_TIMEOUT:-60000}
+      - RAG_API_RETRY_ATTEMPTS=${RAG_API_RETRY_ATTEMPTS:-5}
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

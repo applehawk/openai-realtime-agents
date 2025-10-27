@@ -320,6 +320,11 @@ export const validateInterviewAnswer = tool({
   execute: async (input: any) => {
     const { question, userAnswer, questionNumber } = input;
     
+    console.log(`[Interview] Validating answer for question ${questionNumber}`);
+    console.log(`[Interview] OPENAI_API_KEY present:`, !!process.env.OPENAI_API_KEY);
+    console.log(`[Interview] OPENAI_API_KEY length:`, process.env.OPENAI_API_KEY?.length || 0);
+    console.log(`[Interview] OPENAI_API_KEY prefix:`, process.env.OPENAI_API_KEY?.substring(0, 7) || 'NOT_SET');
+    
     try {
       // Call OpenAI API for validation
       const response = await fetch('https://api.openai.com/v1/chat/completions', {

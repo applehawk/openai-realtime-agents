@@ -34,6 +34,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
+# Copy package.json for reference (optional but good practice)
+COPY --from=builder /app/package.json ./package.json
+
 # Change ownership to nextjs user
 RUN chown -R nextjs:nodejs /app
 
