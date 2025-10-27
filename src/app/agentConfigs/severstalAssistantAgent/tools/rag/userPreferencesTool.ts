@@ -164,6 +164,111 @@ export const queryUserPreferences = tool({
 });
 
 /**
+ * Tool for checking interview completeness
+ */
+export const checkInterviewCompleteness = tool({
+  name: 'checkInterviewCompleteness',
+  description: `Проверить полноту интервью пользователя - все ли 7 обязательных разделов заполнены.
+  
+Анализирует профиль пользователя и определяет:
+- Полный профиль (все 7 разделов заполнены)
+- Неполный профиль (отсутствуют некоторые разделы)
+- Отсутствующий профиль (интервью не проводилось)
+
+Используется Router Agent для принятия решения о необходимости интервью.`,
+  parameters: {
+    type: 'object',
+    properties: {
+      userId: {
+        type: 'string',
+        description: 'ID пользователя',
+      },
+    },
+    required: ['userId'],
+    additionalProperties: false,
+  },
+  execute: async (input: any) => {
+    const { userId } = input;
+    
+    try {
+      const workspaceName = `${userId}_user_key_preferences`;
+      const result = await callRagServerForPreferences(
+        `полный профиль пользователя ${userId} со всеми разделами: компетенции, стиль общения, предпочтения для встреч, фокусная работа, стиль работы, карьерные цели, подход к решению задач`,
+        workspaceName
+      );
+      
+      // Check if profile exists and is meaningful
+      if (!result || result.includes('не располагаю достаточной информацией') || 
+          result.includes('No relevant context found') || result.includes('не найдено')) {
+        return {
+          status: 'not_started',
+          message: 'Интервью не проводилось',
+          completeness: 0,
+          missingFields: [],
+        };
+      }
+      
+      // Define required fields for complete interview
+      const requiredFields = [
+        { key: 'компетенции', patterns: ['компетенци', 'эксперт', 'навык'] },
+        { key: 'стиль общения', patterns: ['стиль', 'общени', 'коммуникац'] },
+        { key: 'предпочтения для встреч', patterns: ['встреч', 'предпочтен', 'время'] },
+        { key: 'фокусная работа', patterns: ['фокус', 'концентрац', 'отвлечен'] },
+        { key: 'стиль работы', patterns: ['работ', 'задач', 'проект'] },
+        { key: 'карьерные цели', patterns: ['карьер', 'цел', 'развит'] },
+        { key: 'подход к решению', patterns: ['подход', 'решен', 'задач'] },
+      ];
+      
+      const responseText = result.toLowerCase();
+      const missingFields = [];
+      let filledFields = 0;
+      
+      // Check each required field
+      for (const field of requiredFields) {
+        const isPresent = field.patterns.some(pattern => responseText.includes(pattern));
+        if (isPresent) {
+          filledFields++;
+        } else {
+          missingFields.push(field.key);
+        }
+      }
+      
+      const completeness = Math.round((filledFields / requiredFields.length) * 100);
+      
+      // Determine status
+      let status;
+      if (completeness === 0) {
+        status = 'not_started';
+      } else if (completeness < 100) {
+        status = 'incomplete';
+      } else {
+        status = 'complete';
+      }
+      
+      return {
+        status,
+        message: status === 'complete' ? 'Профиль полный' : 
+                status === 'incomplete' ? `Профиль неполный (${completeness}%)` : 
+                'Интервью не проводилось',
+        completeness,
+        filledFields,
+        totalFields: requiredFields.length,
+        missingFields,
+        profileLength: result.length,
+      };
+    } catch (error: any) {
+      console.error('[InterviewCompleteness] Error checking completeness:', error);
+      return {
+        status: 'error',
+        message: `Ошибка при проверке полноты профиля: ${error.message}`,
+        completeness: 0,
+        missingFields: [],
+      };
+    }
+  },
+});
+
+/**
  * Tool for updating user preferences
  */
 export const updateUserPreferences = tool({

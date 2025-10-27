@@ -13,6 +13,7 @@ import { getCurrentUserInfo } from '../tools/userInfoTool';
 import {
   startInitialInterview,
   conductInitialInterview,
+  validateInterviewAnswer,
 } from '../tools/interviewTools';
 
 export const interviewAgent = new RealtimeAgent({
@@ -28,6 +29,7 @@ export const interviewAgent = new RealtimeAgent({
     getCurrentUserInfo,
     startInitialInterview,
     conductInitialInterview,
+    validateInterviewAnswer, // ← Валидация качества ответов пользователя
     // Note: checkInterviewStatus уже вызван Router Agent перед делегацией
   ],
 });

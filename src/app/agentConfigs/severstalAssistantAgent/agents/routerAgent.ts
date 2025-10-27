@@ -18,7 +18,7 @@ import { interviewAgent, setInterviewAgentHandoff } from './interviewAgent';
 // Tools for direct execution and delegation
 import { delegateToIntelligentSupervisor } from '../tools/intelligentSupervisorTool'; // Unified supervisor
 import { getCurrentUserInfo } from '../tools/userInfoTool';
-import { queryUserPreferences, updateUserPreferences } from '../tools/rag/userPreferencesTool';
+import { queryUserPreferences, updateUserPreferences, checkInterviewCompleteness } from '../tools/rag/userPreferencesTool';
 
 export const routerAgent = new RealtimeAgent({
   name: 'routerAgent',
@@ -43,6 +43,7 @@ export const routerAgent = new RealtimeAgent({
     getCurrentUserInfo,
     queryUserPreferences, // ← Запрос предпочтений пользователя из персонального workspace (используется также для проверки статуса интервью)
     updateUserPreferences, // ← Обновление предпочтений пользователя
+    checkInterviewCompleteness, // ← Проверка полноты интервью (новый пользователь/неполный/полный профиль)
 
     // Backend agent для всех многошаговых задач
     delegateToIntelligentSupervisor, // ← Unified intelligent supervisor (Path 4)

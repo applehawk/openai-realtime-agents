@@ -173,9 +173,40 @@ async function checkInterviewStatus(userId: string) {
         !interviewData.response.includes('не располагаю достаточной информацией') &&
         !interviewData.response.includes('не найдено') &&
         interviewData.response.length > 50) {
+      
+      // Define required fields for complete interview
+      const requiredFields = [
+        { key: 'компетенции', patterns: ['компетенци', 'эксперт', 'навык'] },
+        { key: 'стиль общения', patterns: ['стиль', 'общени', 'коммуникац'] },
+        { key: 'предпочтения для встреч', patterns: ['встреч', 'предпочтен', 'время'] },
+        { key: 'фокусная работа', patterns: ['фокус', 'концентрац', 'отвлечен'] },
+        { key: 'стиль работы', patterns: ['работ', 'задач', 'проект'] },
+        { key: 'карьерные цели', patterns: ['карьер', 'цел', 'развит'] },
+        { key: 'подход к решению', patterns: ['подход', 'решен', 'задач'] },
+      ];
+      
+      const responseText = interviewData.response.toLowerCase();
+      const filledFields = [];
+      const missingFields = [];
+      
+      for (const field of requiredFields) {
+        const isPresent = field.patterns.some(pattern => responseText.includes(pattern));
+        if (isPresent) {
+          filledFields.push(field);
+        } else {
+          missingFields.push(field);
+        }
+      }
+      
+      const completeness = Math.round((filledFields.length / requiredFields.length) * 100);
+      
       return NextResponse.json({
         hasInterview: true,
-        message: 'Интервью уже проводилось',
+        message: completeness === 100 ? 'Интервью завершено полностью' : `Интервью завершено на ${completeness}%`,
+        completeness,
+        filledFields: filledFields.length,
+        totalFields: requiredFields.length,
+        missingFields: missingFields.map(f => f.key),
         interviewData: interviewData.response,
       });
     }
@@ -183,12 +214,14 @@ async function checkInterviewStatus(userId: string) {
     return NextResponse.json({
       hasInterview: false,
       message: 'Первичное интервью не проводилось',
+      completeness: 0,
     });
   } catch (error: any) {
     console.error('Error checking interview status:', error);
     return NextResponse.json({
       hasInterview: false,
       message: `Ошибка при проверке статуса интервью: ${error.message}`,
+      completeness: 0,
     });
   }
 }

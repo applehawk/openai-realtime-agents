@@ -8,7 +8,8 @@ interface InterviewButtonProps {
 
 interface InterviewStatus {
   hasInterview: boolean;
-  status: 'loading' | 'completed' | 'not_started' | 'error';
+  status: 'loading' | 'completed' | 'incomplete' | 'not_started' | 'error';
+  completeness?: number; // Процент завершенности (0-100)
 }
 
 export default function InterviewButton({ onStartInterview }: InterviewButtonProps) {
@@ -34,9 +35,21 @@ export default function InterviewButton({ onStartInterview }: InterviewButtonPro
 
       if (response.ok) {
         const result = await response.json();
+        
+        // Определяем статус на основе результата
+        let status: InterviewStatus['status'] = 'not_started';
+        if (result.hasInterview) {
+          if (result.completeness === 100) {
+            status = 'completed';
+          } else if (result.completeness > 0) {
+            status = 'incomplete';
+          }
+        }
+        
         setInterviewStatus({
           hasInterview: result.hasInterview || false,
-          status: result.hasInterview ? 'completed' : 'not_started'
+          status,
+          completeness: result.completeness || 0
         });
       } else {
         setInterviewStatus({ hasInterview: false, status: 'error' });
@@ -66,12 +79,17 @@ export default function InterviewButton({ onStartInterview }: InterviewButtonPro
   const getButtonText = () => {
     if (isLoading) return 'Загрузка...';
     if (interviewStatus.status === 'completed') return 'Интервью ✓';
+    if (interviewStatus.status === 'incomplete') {
+      const percent = interviewStatus.completeness || 0;
+      return `Интервью ${percent}%`;
+    }
     if (interviewStatus.status === 'error') return 'Интервью ?';
     return 'Интервью';
   };
 
   const getButtonClass = () => {
     if (interviewStatus.status === 'completed') return styles.interviewButtonCompleted;
+    if (interviewStatus.status === 'incomplete') return styles.interviewButtonIncomplete;
     if (interviewStatus.status === 'error') return styles.interviewButtonError;
     return styles.interviewButton;
   };
@@ -84,6 +102,8 @@ export default function InterviewButton({ onStartInterview }: InterviewButtonPro
       title={
         interviewStatus.status === 'completed' 
           ? 'Интервью уже проведено. Нажмите для повторного интервью'
+          : interviewStatus.status === 'incomplete'
+          ? `Интервью завершено на ${interviewStatus.completeness}%. Нажмите для продолжения`
           : 'Начать первичное интервью для настройки предпочтений'
       }
     >

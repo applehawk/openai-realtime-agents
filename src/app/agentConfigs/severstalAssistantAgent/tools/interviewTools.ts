@@ -174,9 +174,18 @@ export const conductInitialInterview = tool({
     
     // Determine next question or completion
     const questionNumber = parseInt(currentQuestion);
-    const isComplete = questionNumber >= 7; // ALL questions are required
     
-    if (isComplete) {
+    // Check if all required fields are filled (not just question number)
+    const allFieldsFilled = 
+      updatedState.competencies && updatedState.competencies !== 'заполнено' &&
+      updatedState.communicationStyle && updatedState.communicationStyle !== 'заполнено' &&
+      updatedState.meetingPreferences && updatedState.meetingPreferences !== 'заполнено' &&
+      updatedState.focusTime && updatedState.focusTime !== 'заполнено' &&
+      updatedState.workStyle && updatedState.workStyle !== 'заполнено' &&
+      updatedState.careerGoals && updatedState.careerGoals !== 'заполнено' &&
+      updatedState.problemSolvingApproach && updatedState.problemSolvingApproach !== 'заполнено';
+    
+    if (allFieldsFilled) {
       // Save interview data to RAG via API
       try {
         const interviewSummary = `
@@ -231,57 +240,81 @@ ${updatedState.problemSolvingApproach || 'Не указано'}
         };
       }
     } else {
-      // Continue with next question
-      const nextQuestionNumber = questionNumber + 1;
-      
-      console.log(`[Interview] Current question: ${currentQuestion}, Next: ${nextQuestionNumber}`);
-      
+      // Find next unfilled question
       const questions = [
         {
           id: '1',
           text: `Я вижу, что ваша должность — ${userPosition}. Обычно на этой позиции специалисты разбираются в нескольких ключевых областях. Подтверждаете? Есть ли другие темы, в которых вы эксперт?`,
+          field: 'competencies'
         },
         {
           id: '2',
           text: 'Как мне лучше с вами общаться? Предпочитаете официальный деловой тон или более неформальный? Сразу переходить к сути или давать контекст?',
+          field: 'communicationStyle'
         },
         {
           id: '3',
           text: 'В какие дни недели и время дня вам удобнее назначать встречи? Например, утро вторника или вторая половина четверга.',
+          field: 'meetingPreferences'
         },
         {
           id: '4',
           text: 'Когда вам важно работать без отвлечений? Назовите дни недели и время, когда можно вас беспокоить только в крайнем случае.',
+          field: 'focusTime'
         },
         {
           id: '5',
           text: 'Вы предпочитаете сосредоточиться на одной задаче или работать над несколькими проектами параллельно?',
+          field: 'workStyle'
         },
         {
           id: '6',
           text: 'Какие у вас профессиональные цели на ближайший год? В чем хотели бы развиваться? Подскажу, если будет профильное обучение или интересные проекты, где можно поучаствовать.',
+          field: 'careerGoals'
         },
         {
           id: '7',
           text: 'Когда сталкиваетесь со сложной задачей, вы предпочитаете сначала сами все проработать или обсудить с коллегами?',
+          field: 'problemSolvingApproach'
         },
       ];
       
-      const nextQuestion = questions.find(q => q.id === nextQuestionNumber.toString());
+      // Find next unfilled question
+      let nextQuestion = null;
+      for (const q of questions) {
+        const fieldValue = updatedState[q.field as keyof typeof updatedState];
+        if (!fieldValue || fieldValue === 'заполнено') {
+          nextQuestion = q;
+          break;
+        }
+      }
+      
+      console.log(`[Interview] Current question: ${currentQuestion}, Next unfilled: ${nextQuestion?.id || 'none'}`);
       
       console.log(`[Interview] Next question found: ${!!nextQuestion}, Text: ${nextQuestion?.text?.substring(0, 50)}`);
       
       if (!nextQuestion) {
-        console.error(`[Interview] ERROR: Question ${nextQuestionNumber} not found! This should never happen!`);
+        // All questions are filled, interview should be complete
+        console.log(`[Interview] All questions filled, interview complete`);
+        return {
+          status: 'completed',
+          message: 'Интервью завершено! Все разделы заполнены.',
+          nextQuestion: null,
+          interviewState: updatedState,
+        };
       }
       
-      const remainingQuestions = 7 - nextQuestionNumber + 1;
+      // Count remaining unfilled questions
+      const remainingQuestions = questions.filter(q => {
+        const fieldValue = updatedState[q.field as keyof typeof updatedState];
+        return !fieldValue || fieldValue === 'заполнено';
+      }).length;
       
       return {
         status: 'in_progress',
-        message: `СЛЕДУЮЩИЙ ВОПРОС (${nextQuestionNumber}/7, осталось ${remainingQuestions}): ${nextQuestion?.text || `ОШИБКА: вопрос ${nextQuestionNumber} не найден`}`,
-        nextQuestion: nextQuestion?.text || null,
-        currentQuestionNumber: nextQuestionNumber,
+        message: `СЛЕДУЮЩИЙ ВОПРОС (${nextQuestion.id}/7, осталось ${remainingQuestions}): ${nextQuestion.text}`,
+        nextQuestion: nextQuestion.text,
+        currentQuestionNumber: parseInt(nextQuestion.id),
         totalQuestions: 7,
         questionsRemaining: remainingQuestions,
         interviewState: updatedState,
@@ -292,11 +325,122 @@ ${updatedState.problemSolvingApproach || 'Не указано'}
 });
 
 /**
+ * Tool for validating interview answers using LLM
+ */
+export const validateInterviewAnswer = tool({
+  name: 'validateInterviewAnswer',
+  description: `Валидация качества ответа пользователя на вопрос интервью с помощью LLM.
+  
+Анализирует ответ пользователя и определяет:
+- Качественный ответ (достаточно деталей, релевантен вопросу)
+- Некачественный ответ (слишком короткий, нерелевантный, бессмысленный)
+
+При плохом ответе возвращает предложение переформулировать вопрос.`,
+  parameters: {
+    type: 'object',
+    properties: {
+      question: {
+        type: 'string',
+        description: 'Текст вопроса интервью',
+      },
+      userAnswer: {
+        type: 'string',
+        description: 'Ответ пользователя на вопрос',
+      },
+      questionNumber: {
+        type: 'string',
+        description: 'Номер вопроса (1-7)',
+      },
+    },
+    required: ['question', 'userAnswer', 'questionNumber'],
+    additionalProperties: false,
+  },
+  execute: async (input: any) => {
+    const { question, userAnswer, questionNumber } = input;
+    
+    try {
+      // Call OpenAI API for validation
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `Вы эксперт по анализу ответов в интервью. Ваша задача - определить качество ответа пользователя.
+
+Критерии качественного ответа:
+- Длина: минимум 10-15 слов
+- Релевантность: ответ соответствует вопросу
+- Информативность: содержит конкретные детали, не общие фразы
+- Осмысленность: логичный, понятный ответ
+
+Критерии некачественного ответа:
+- Слишком короткий (менее 10 слов)
+- Не релевантный вопросу
+- Общие фразы без деталей ("не знаю", "как обычно", "по-разному")
+- Бессмысленный или неразборчивый текст
+
+Верните JSON:
+{
+  "isValid": true/false,
+  "reason": "краткое объяснение",
+  "suggestion": "предложение для переформулировки вопроса (если isValid = false)"
+}`
+            },
+            {
+              role: 'user',
+              content: `Вопрос ${questionNumber}: ${question}
+
+Ответ пользователя: ${userAnswer}
+
+Проанализируйте качество ответа.`
+            }
+          ],
+          temperature: 0.3,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const validationResult = JSON.parse(data.choices[0].message.content);
+
+      console.log(`[Interview] Validation result for question ${questionNumber}:`, validationResult);
+
+      return {
+        isValid: validationResult.isValid,
+        reason: validationResult.reason,
+        suggestion: validationResult.suggestion || null,
+        questionNumber,
+        userAnswer,
+      };
+    } catch (error: any) {
+      console.error('[Interview] Error validating answer:', error);
+      // Fallback: consider answer valid if validation fails
+      return {
+        isValid: true,
+        reason: 'Ошибка валидации, считаем ответ валидным',
+        suggestion: null,
+        questionNumber,
+        userAnswer,
+      };
+    }
+  },
+});
+
+/**
  * Simple tool to start initial interview
  */
 export const startInitialInterview = tool({
   name: 'startInitialInterview',
-  description: 'Начать первичное интервью с пользователем для сбора предпочтений',
+  description: 'Начать или продолжить интервью с пользователем для сбора предпочтений',
   parameters: {
     type: 'object',
     properties: {
@@ -315,19 +459,19 @@ export const startInitialInterview = tool({
   execute: async (input: any) => {
     const { userId, userPosition } = input;
     
-    // Check if interview already exists AND is complete by querying RAG directly
+    // Check if interview already exists and determine completion status
     try {
       const workspaceName = `${userId}_user_key_preferences`;
       
-      // Check all required fields
+      // Define required fields with their question numbers
       const requiredFields = [
-        'компетенции',
-        'стиль общения',
-        'предпочтения для встреч',
-        'фокусная работа',
-        'стиль работы',
-        'карьерные цели',
-        'подход к решению задач'
+        { key: 'компетенции', questionNumber: 1, patterns: ['компетенци', 'эксперт', 'навык'] },
+        { key: 'стиль общения', questionNumber: 2, patterns: ['стиль', 'общени', 'коммуникац'] },
+        { key: 'предпочтения для встреч', questionNumber: 3, patterns: ['встреч', 'предпочтен', 'время'] },
+        { key: 'фокусная работа', questionNumber: 4, patterns: ['фокус', 'концентрац', 'отвлечен'] },
+        { key: 'стиль работы', questionNumber: 5, patterns: ['работ', 'задач', 'проект'] },
+        { key: 'карьерные цели', questionNumber: 6, patterns: ['карьер', 'цел', 'развит'] },
+        { key: 'подход к решению', questionNumber: 7, patterns: ['подход', 'решен', 'задач'] },
       ];
       
       const response = await callRagApiDirect('/query', 'POST', {
@@ -342,33 +486,57 @@ export const startInitialInterview = tool({
           !response.response.includes('No relevant context found') &&
           !response.response.includes('не найдено')) {
         
-        // Check if ALL required fields are present
+        // Check which fields are present
         const responseText = response.response.toLowerCase();
-        const missingFields = requiredFields.filter(field => 
-          !responseText.includes(field.toLowerCase())
-        );
+        const filledFields = [];
+        const missingFields = [];
         
-        const notSpecifiedCount = (responseText.match(/не указано/gi) || []).length;
-        const minProfileLength = 300;
-        const isLongEnough = response.response.length >= minProfileLength;
+        for (const field of requiredFields) {
+          const isPresent = field.patterns.some(pattern => responseText.includes(pattern));
+          if (isPresent) {
+            filledFields.push(field);
+          } else {
+            missingFields.push(field);
+          }
+        }
         
         console.log(`[Interview] startInitialInterview check for user ${userId}`);
-        console.log(`[Interview] Missing fields: ${missingFields.length}, NotSpecified: ${notSpecifiedCount}, Length: ${response.response.length}`);
+        console.log(`[Interview] Filled fields: ${filledFields.length}, Missing: ${missingFields.length}`);
         
-        if (missingFields.length === 0 && notSpecifiedCount < requiredFields.length && isLongEnough) {
-          // Interview is complete with all fields
+        if (missingFields.length === 0) {
+          // Interview is complete
           console.log(`[Interview] ✅ Interview already complete for user ${userId}`);
           return {
             status: 'already_completed',
             message: 'ok', // Интервью уже пройдено полностью - молча продолжаем работу
           };
         } else {
-          // Interview exists but incomplete - continue from where we left off
-          console.log(`[Interview] ❌ Incomplete interview for user ${userId}. Will complete missing fields.`);
+          // Interview is incomplete - determine starting point
+          const nextQuestionNumber = Math.min(...missingFields.map(f => f.questionNumber));
+          const nextField = missingFields.find(f => f.questionNumber === nextQuestionNumber);
+          
+          console.log(`[Interview] ❌ Incomplete interview for user ${userId}. Starting from question ${nextQuestionNumber}`);
+          
+          return {
+            status: 'resume',
+            message: `Продолжаем интервью с вопроса ${nextQuestionNumber}. Уже заполнено ${filledFields.length} из 7 разделов.`,
+            currentQuestion: nextQuestionNumber.toString(),
+            filledFields: filledFields.map(f => f.key),
+            missingFields: missingFields.map(f => f.key),
+            interviewState: {
+              competencies: filledFields.find(f => f.key === 'компетенции') ? 'заполнено' : '',
+              communicationStyle: filledFields.find(f => f.key === 'стиль общения') ? 'заполнено' : '',
+              meetingPreferences: filledFields.find(f => f.key === 'предпочтения для встреч') ? 'заполнено' : '',
+              focusTime: filledFields.find(f => f.key === 'фокусная работа') ? 'заполнено' : '',
+              workStyle: filledFields.find(f => f.key === 'стиль работы') ? 'заполнено' : '',
+              careerGoals: filledFields.find(f => f.key === 'карьерные цели') ? 'заполнено' : '',
+              problemSolvingApproach: filledFields.find(f => f.key === 'подход к решению') ? 'заполнено' : '',
+            },
+          };
         }
       }
     } catch (error) {
-      console.log('[Interview] Could not check status, proceeding with interview');
+      console.log('[Interview] Could not check status, proceeding with new interview');
     }
     
     // Start first question
