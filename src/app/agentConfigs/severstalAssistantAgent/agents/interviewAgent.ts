@@ -9,11 +9,12 @@
 
 import { RealtimeAgent } from '@openai/agents/realtime';
 import { interviewAgentPrompt } from '../prompts/interviewPrompt';
-import { getCurrentUserInfo } from '../tools/userInfoTool';
+import { getCurrentUserInfo } from '../tools/interview/userInfoTool';
 import {
   startInitialInterview,
   conductInitialInterview,
-} from '../tools/interviewTools';
+  validateInterviewAnswer,
+} from '../tools/interview/interviewTools';
 
 export const interviewAgent = new RealtimeAgent({
   name: 'interviewAgent',
@@ -28,6 +29,7 @@ export const interviewAgent = new RealtimeAgent({
     getCurrentUserInfo,
     startInitialInterview,
     conductInitialInterview,
+    validateInterviewAnswer, // ← Валидация качества ответов пользователя
     // Note: checkInterviewStatus уже вызван Router Agent перед делегацией
   ],
 });
