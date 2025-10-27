@@ -58,7 +58,7 @@ echo ""
 
 # Stop containers
 echo "🛑 Stopping containers..."
-docker-compose down
+docker compose down
 echo ""
 
 # Remove old images (optional)
@@ -68,12 +68,12 @@ echo ""
 
 # Build with no cache
 echo "🏗️  Building new image (this may take a few minutes)..."
-docker-compose build --no-cache
+docker compose build --no-cache
 echo ""
 
 # Start containers
 echo "🚀 Starting containers..."
-docker-compose up -d
+docker compose up -d
 echo ""
 
 # Wait for container to be ready
@@ -100,12 +100,12 @@ if docker ps | grep -q "openai-realtime-agents"; then
         echo ""
     else
         echo -e "${RED}❌ OPENAI_API_KEY is NOT set in container${NC}"
-        echo "   Check docker-compose logs for details"
+        echo "   Check docker compose logs for details"
         echo ""
     fi
 else
     echo -e "${RED}❌ Container failed to start${NC}"
-    echo "   Check logs with: docker-compose logs"
+    echo "   Check logs with: docker compose logs"
     exit 1
 fi
 
@@ -130,7 +130,7 @@ fi
 echo "=========================================="
 echo "📋 Recent Logs (last 20 lines):"
 echo "=========================================="
-docker-compose logs --tail=20
+docker compose logs --tail=20
 
 echo ""
 echo "=========================================="
@@ -139,7 +139,7 @@ echo "=========================================="
 echo ""
 echo "Next steps:"
 echo "1. Check health: curl http://localhost:3000/api/health-env"
-echo "2. View logs: docker-compose logs -f"
+echo "2. View logs: docker compose logs -f"
 echo "3. Test interview validation"
 echo ""
 echo "If issues persist, run: ./deploy-troubleshoot.sh"
