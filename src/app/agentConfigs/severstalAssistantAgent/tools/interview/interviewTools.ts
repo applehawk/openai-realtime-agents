@@ -2,7 +2,7 @@ import { tool } from '@openai/agents/realtime';
 import { callRagApiDirect } from '@/app/lib/ragApiClient';
 
 /**
- * Create user workspace for interview data
+ * Create user workspace for interview data with fallback handling
  */
 export async function createUserWorkspace(userId: string): Promise<void> {
   const workspaceName = `${userId}_user_key_preferences`;
@@ -34,12 +34,21 @@ export async function createUserWorkspace(userId: string): Promise<void> {
     console.log(`[Interview] Created workspace: ${workspaceName}`);
   } catch (error: any) {
     console.error(`[Interview] Failed to create workspace:`, error);
+    
+    // Check if it's a connectivity issue
+    if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
+      console.error(`[Interview] RAG server appears to be down. Interview data will not be saved.`);
+      console.error(`[Interview] Please check if RAG server is running on port 9621`);
+      // Don't throw error - allow interview to continue without saving
+      return;
+    }
+    
     throw new Error(`Не удалось создать рабочее пространство: ${error.message}`);
   }
 }
 
 /**
- * Save interview data to RAG
+ * Save interview data to RAG with fallback handling
  */
 export async function saveInterviewData(userId: string, interviewData: string): Promise<void> {
   const workspaceName = `${userId}_user_key_preferences`;
@@ -53,6 +62,15 @@ export async function saveInterviewData(userId: string, interviewData: string): 
     console.log(`[Interview] Saved interview data for user ${userId}`);
   } catch (error: any) {
     console.error(`[Interview] Failed to save interview data:`, error);
+    
+    // Check if it's a connectivity issue
+    if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
+      console.error(`[Interview] RAG server appears to be down. Interview data will not be saved.`);
+      console.error(`[Interview] Please check if RAG server is running on port 9621`);
+      // Don't throw error - allow interview to continue without saving
+      return;
+    }
+    
     throw new Error(`Не удалось сохранить данные интервью: ${error.message}`);
   }
 }
@@ -149,8 +167,7 @@ export const conductInitialInterview = tool({
     
     if (allFieldsFilled) {
       // Save interview data to RAG via API
-      try {
-        const interviewSummary = `
+      const interviewSummary = `
 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ: ${userId}
 Должность: ${userPosition}
 Дата интервью: ${new Date().toISOString()}
@@ -175,11 +192,9 @@ ${updatedState.careerGoals || 'Не указано'}
 
 ПОДХОД К РЕШЕНИЮ ЗАДАЧ:
 ${updatedState.problemSolvingApproach || 'Не указано'}
-        `.trim();
-        
-        // Save interview data directly to RAG
-        const workspaceName = `${userId}_user_key_preferences`;
-        
+      `.trim();
+      
+      try {
         // Create workspace if it doesn't exist
         await createUserWorkspace(userId);
         
@@ -194,6 +209,7 @@ ${updatedState.problemSolvingApproach || 'Не указано'}
         };
       } catch (error: any) {
         console.error('[Interview] Error saving data:', error);
+        
         return {
           status: 'error',
           message: `Интервью завершено, но возникла ошибка при сохранении данных: ${error.message}`,
@@ -287,11 +303,11 @@ ${updatedState.problemSolvingApproach || 'Не указано'}
 });
 
 /**
- * Tool for validating interview answers using backend API
+ * Tool for validating interview answers using LLM
  */
 export const validateInterviewAnswer = tool({
   name: 'validateInterviewAnswer',
-  description: `Валидация качества ответа пользователя на вопрос интервью через бекенд API.
+  description: `Валидация качества ответа пользователя на вопрос интервью с помощью LLM.
   
 Анализирует ответ пользователя и определяет:
 - Качественный ответ (достаточно деталей, релевантен вопросу)
@@ -320,28 +336,68 @@ export const validateInterviewAnswer = tool({
   execute: async (input: any) => {
     const { question, userAnswer, questionNumber } = input;
     
-    console.log(`[Interview] Validating answer for question ${questionNumber} via backend API`);
+    console.log(`[Interview] Validating answer for question ${questionNumber}`);
     
     try {
-      // Call backend API for validation instead of direct OpenAI call
-      const response = await fetch('/api/validate-answer', {
+      // Call OpenAI API directly for validation
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          question,
-          userAnswer,
-          questionNumber,
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `Вы эксперт по анализу ответов в интервью. Ваша задача - определить качество ответа пользователя.
+
+ВАЖНО: Будьте МЯГКИМИ в оценке. Пропускайте почти все ответы, кроме явно нерелевантных.
+
+Критерии НЕкачественного ответа (только эти случаи должны возвращать isValid: false):
+- Полностью нерелевантный ответ (не по теме вопроса)
+- Бессмысленный текст ("ля-ля-ля", "раз два три", "абвгд")
+- Очевидно случайные символы или набор букв
+- Ответы, которые явно не относятся к вопросу
+- Общие фразы - (Не знаю, как обычно, по-разному)
+
+Критерии качественного ответа (все остальные случаи):
+- Любой осмысленный ответ, даже короткий
+- Ответы типа "да", "нет" - принимайте как валидные
+- Короткие ответы - принимайте как валидные
+- Любой ответ, который хоть как-то связан с вопросом
+
+Верните JSON:
+{
+  "isValid": true/false,
+  "reason": "краткое объяснение",
+  "suggestion": "предложение для переформулировки вопроса (если isValid = false)"
+}`
+            },
+            {
+              role: 'user',
+              content: `Вопрос ${questionNumber}: ${question}
+
+Ответ пользователя: ${userAnswer}
+
+Проанализируйте качество ответа.`
+            }
+          ],
+          temperature: 0.3,
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`Backend API error: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`[Interview] OpenAI API error: ${response.status} - ${errorText}`);
+        throw new Error(`OpenAI API error: ${response.status}`);
       }
 
-      const validationResult = await response.json();
-      console.log(`[Interview] Backend validation result for question ${questionNumber}:`, validationResult);
+      const data = await response.json();
+      const validationResult = JSON.parse(data.choices[0].message.content);
+
+      console.log(`[Interview] Validation result for question ${questionNumber}:`, validationResult);
 
       return {
         isValid: validationResult.isValid,
@@ -351,11 +407,11 @@ export const validateInterviewAnswer = tool({
         userAnswer,
       };
     } catch (error: any) {
-      console.error('[Interview] Error validating answer via backend:', error);
+      console.error('[Interview] Error validating answer:', error);
       // Fallback: consider answer valid if validation fails
       return {
         isValid: true,
-        reason: 'Ошибка валидации через бекенд, считаем ответ валидным',
+        reason: 'Ошибка валидации, считаем ответ валидным',
         suggestion: null,
         questionNumber,
         userAnswer,
