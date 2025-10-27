@@ -321,45 +321,75 @@ export const validateInterviewAnswer = tool({
     const { question, userAnswer, questionNumber } = input;
     
     try {
-      console.log(`[Interview] Validating answer for question ${questionNumber}:`, userAnswer);
-      
-      // Call our API endpoint for validation
-      const response = await fetch('/api/validate-answer', {
+      // Call OpenAI API for validation
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          question,
-          userAnswer,
-          questionNumber,
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `Вы эксперт по анализу ответов в интервью. Ваша задача - определить качество ответа пользователя.
+
+Критерии качественного ответа:
+- Длина: минимум 10-15 слов
+- Релевантность: ответ соответствует вопросу
+- Информативность: содержит конкретные детали, не общие фразы
+- Осмысленность: логичный, понятный ответ
+
+Критерии некачественного ответа:
+- Слишком короткий (менее 10 слов)
+- Не релевантный вопросу
+- Общие фразы без деталей ("не знаю", "как обычно", "по-разному")
+- Бессмысленный или неразборчивый текст
+
+Верните JSON:
+{
+  "isValid": true/false,
+  "reason": "краткое объяснение",
+  "suggestion": "предложение для переформулировки вопроса (если isValid = false)"
+}`
+            },
+            {
+              role: 'user',
+              content: `Вопрос ${questionNumber}: ${question}
+
+Ответ пользователя: ${userAnswer}
+
+Проанализируйте качество ответа.`
+            }
+          ],
+          temperature: 0.3,
         }),
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[Interview] Validation API error: ${response.status} - ${errorText}`);
-        throw new Error(`Validation API error: ${response.status} - ${errorText}`);
+        throw new Error(`OpenAI API error: ${response.status}`);
       }
 
-      const validationResult = await response.json();
+      const data = await response.json();
+      const validationResult = JSON.parse(data.choices[0].message.content);
+
       console.log(`[Interview] Validation result for question ${questionNumber}:`, validationResult);
 
-      return validationResult;
+      return {
+        isValid: validationResult.isValid,
+        reason: validationResult.reason,
+        suggestion: validationResult.suggestion || null,
+        questionNumber,
+        userAnswer,
+      };
     } catch (error: any) {
       console.error('[Interview] Error validating answer:', error);
-      // Fallback: use simple validation if API fails - be very permissive
-      // Only reject obviously meaningless responses
-      const isObviouslyMeaningless = userAnswer.match(/^(ля-ля-ля|раз два три|один два три|абвгд|qwerty|asdfgh)$/i) || 
-                                     userAnswer.trim().length < 2 ||
-                                     /^[^а-яё\s]+$/i.test(userAnswer); // Only non-Cyrillic characters
-      
+      // Fallback: consider answer valid if validation fails
       return {
-        isValid: !isObviouslyMeaningless,
-        reason: !isObviouslyMeaningless ? 
-          'Простая валидация: ответ принят' : 
-          'Простая валидация: ответ слишком бессмысленный',
-        suggestion: isObviouslyMeaningless ? 'Пожалуйста, дайте осмысленный ответ' : null,
+        isValid: true,
+        reason: 'Ошибка валидации, считаем ответ валидным',
+        suggestion: null,
         questionNumber,
         userAnswer,
       };
@@ -490,221 +520,5 @@ export const startInitialInterview = tool({
         problemSolvingApproach: '',
       },
     };
-  },
-});
-
-/**
- * Tool for checking if user has completed initial interview with ALL fields filled
- * DEPRECATED: Use queryUserPreferences instead
- */
-const _deprecatedCheckInterviewStatus = tool({
-  name: '_deprecated_checkInterviewStatus',
-  description: 'DEPRECATED: Use queryUserPreferences instead',
-  parameters: {
-    type: 'object',
-    properties: {
-      userId: {
-        type: 'string',
-        description: 'ID пользователя',
-      },
-    },
-    required: ['userId'],
-    additionalProperties: false,
-  },
-  execute: async (input: any) => {
-    const { userId } = input;
-    
-    try {
-      // Проверяем наличие данных интервью в workspace пользователя
-      const workspaceName = `${userId}_user_key_preferences`;
-      
-      console.log(`\n========================================`);
-      console.log(`[Interview] Checking interview status for user: ${userId}`);
-      console.log(`[Interview] Workspace: ${workspaceName}`);
-      console.log(`========================================\n`);
-      
-      // Запрашиваем ПОЛНЫЙ профиль пользователя через API proxy (работает на клиенте)
-      const ragResponse = await fetch('/api/rag', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: Date.now(),
-          method: 'tools/call',
-          params: {
-            name: 'lightrag_query',
-            arguments: {
-              query: `покажи весь профиль пользователя ${userId} включая все разделы: компетенции, стиль общения, предпочтения встреч, фокусную работу, стиль работы, карьерные цели, подход к решению задач`,
-              mode: 'local',
-              top_k: 10,
-              workspace: workspaceName,
-              include_references: true,
-            },
-          },
-        }),
-        signal: AbortSignal.timeout(30000),
-      });
-      
-      if (!ragResponse.ok) {
-        console.error(`[Interview] RAG API returned status ${ragResponse.status}`);
-        return {
-          hasInterview: false,
-          message: 'Не удалось проверить статус интервью. Попробуйте позже.',
-        };
-      }
-      
-      const ragData = await ragResponse.json();
-      
-      if (ragData.error) {
-        console.error(`[Interview] RAG API error:`, ragData.error);
-        return {
-          hasInterview: false,
-          message: 'Ошибка при проверке статуса интервью.',
-        };
-      }
-      
-      // Extract response text from MCP format
-      let responseText = '';
-      if (ragData.result?.content?.[0]?.text) {
-        // Try to parse if it's JSON
-        try {
-          const parsed = JSON.parse(ragData.result.content[0].text);
-          responseText = parsed.response || ragData.result.content[0].text;
-        } catch {
-          responseText = ragData.result.content[0].text;
-        }
-      } else {
-        responseText = JSON.stringify(ragData.result || ragData);
-      }
-      
-      const response = { response: responseText };
-      
-      console.log(`[Interview] RAG Response received:`);
-      console.log(`[Interview] Response exists: ${!!response}`);
-      console.log(`[Interview] Response.response exists: ${!!response?.response}`);
-      
-      if (response && response.response) {
-        console.log(`\n========================================`);
-        console.log(`[Interview] FULL PROFILE CONTENT:`);
-        console.log(`========================================`);
-        console.log(response.response);
-        console.log(`========================================`);
-        console.log(`[Interview] Profile length: ${response.response.length} characters\n`);
-        
-        // Проверяем на признаки отсутствия данных
-        const hasNoData = 
-          response.response.includes('не располагаю достаточной информацией') ||
-          response.response.includes('No relevant context found') ||
-          response.response.includes('не найдено');
-        
-        if (hasNoData) {
-          console.log(`[Interview] ❌ RAG returned "no data" response`);
-          return {
-            hasInterview: false,
-            message: 'Интервью не проводилось. Требуется делегировать Interview Agent.',
-          };
-        }
-        
-        // Проверяем каждое обязательное поле
-        const responseText = response.response.toLowerCase();
-        const fieldChecks = {
-          'компетенции': responseText.includes('компетенци'),
-          'стиль общения': responseText.includes('стиль') && responseText.includes('общени'),
-          'предпочтения для встреч': responseText.includes('встреч') || responseText.includes('предпочтен'),
-          'фокусная работа': responseText.includes('фокус'),
-          'стиль работы': responseText.includes('работ'),
-          'карьерные цели': responseText.includes('карьер') || responseText.includes('цел'),
-          'подход к решению': responseText.includes('подход') || responseText.includes('решен'),
-        };
-        
-        console.log(`[Interview] Field presence check:`);
-        Object.entries(fieldChecks).forEach(([field, present]) => {
-          console.log(`  ${present ? '✅' : '❌'} ${field}: ${present ? 'FOUND' : 'MISSING'}`);
-        });
-        
-        const missingFields = Object.entries(fieldChecks)
-          .filter(([_, present]) => !present)
-          .map(([field, _]) => field);
-        
-        const notSpecifiedCount = (response.response.match(/не указано/gi) || []).length;
-        const minProfileLength = 300;
-        const isLongEnough = response.response.length >= minProfileLength;
-        
-        console.log(`\n[Interview] Completeness check:`);
-        console.log(`  Missing fields: ${missingFields.length} - [${missingFields.join(', ')}]`);
-        console.log(`  "Не указано" count: ${notSpecifiedCount}/7`);
-        console.log(`  Length: ${response.response.length} >= ${minProfileLength} = ${isLongEnough ? '✅' : '❌'}`);
-        
-        const isComplete = missingFields.length === 0 && notSpecifiedCount < 7 && isLongEnough;
-        
-        // Создаём детальный отчёт для отладки
-        const debugInfo = {
-          profileLength: response.response.length,
-          missingFieldsCount: missingFields.length,
-          missingFieldsList: missingFields,
-          notSpecifiedCount: notSpecifiedCount,
-          isLongEnough: isLongEnough,
-          profilePreview: response.response.substring(0, 200) + '...',
-        };
-        
-        console.log(`\n[Interview] Debug info:`, JSON.stringify(debugInfo, null, 2));
-        
-        if (isComplete) {
-          console.log(`\n[Interview] ✅✅✅ INTERVIEW COMPLETE ✅✅✅\n`);
-          
-          // Parse structured data from profile
-          const profileText = response.response;
-          const extractField = (fieldName: string): string => {
-            const regex = new RegExp(`${fieldName}[:\\s]+(.*?)(?=\\n[А-ЯЁ]+:|$)`, 'is');
-            const match = profileText.match(regex);
-            return match ? match[1].trim() : 'Не указано';
-          };
-          
-          const result = {
-            hasInterview: true,
-            message: 'ok',
-            profile: {
-              userId: userId,
-              competencies: extractField('КОМПЕТЕНЦИИ И ЭКСПЕРТИЗА'),
-              communicationStyle: extractField('СТИЛЬ ОБЩЕНИЯ'),
-              meetingPreferences: extractField('ПРЕДПОЧТЕНИЯ ДЛЯ ВСТРЕЧ'),
-              focusTime: extractField('РЕЖИМ ФОКУСНОЙ РАБОТЫ'),
-              workStyle: extractField('СТИЛЬ РАБОТЫ'),
-              careerGoals: extractField('КАРЬЕРНЫЕ ЦЕЛИ'),
-              problemSolvingApproach: extractField('ПОДХОД К РЕШЕНИЮ ЗАДАЧ'),
-            },
-            profileLength: response.response.length,
-            completeness: {
-              missingFields: 0,
-              notSpecifiedCount: notSpecifiedCount,
-            },
-          };
-          
-          console.log(`[Interview] RETURNING STRUCTURED RESULT:`, JSON.stringify(result, null, 2));
-          return result;
-        } else {
-          console.log(`\n[Interview] ❌❌❌ INTERVIEW INCOMPLETE ❌❌❌`);
-          console.log(`[Interview] User needs to complete interview\n`);
-          return {
-            hasInterview: false,
-            message: `DEBUG: len=${response.response.length}/300, missing=${missingFields.length} [${missingFields.slice(0,3).join(',')}], notSpec=${notSpecifiedCount}/7`,
-            missingFields,
-            profileData: response.response,
-          };
-        }
-      }
-      
-      console.log(`[Interview] ❌ No valid response from RAG\n`);
-      return {
-        hasInterview: false,
-        message: 'Интервью не проводилось. Требуется делегировать Interview Agent.',
-      };
-    } catch (error: any) {
-      console.error('[Interview] ❌ ERROR checking status:', error);
-      return {
-        hasInterview: false,
-        message: `Ошибка при проверке статуса интервью: ${error.message}`,
-      };
-    }
   },
 });
