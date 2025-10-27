@@ -1,10 +1,77 @@
 import { tool } from '@openai/agents/realtime';
+import { callRagApiDirect } from '@/app/lib/ragApiClient';
 
 // Use API proxy endpoint for client-side execution
 const RAG_API_PROXY = '/api/rag';
 
 /**
- * Helper function to call RAG MCP server via JSON-RPC through API proxy
+ * Helper function to call RAG MCP server via JSON-RPC through API proxy (for server-side execution)
+ */
+async function callRagServerForPreferences(query: string, workspace: string) {
+  try {
+    console.log(`[ManageUserInterview] Querying workspace: ${workspace}`);
+    console.log(`[ManageUserInterview] Query: ${query}`);
+
+    const requestBody = {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method: 'tools/call',
+      params: {
+        name: 'lightrag_query',
+        arguments: {
+          query,
+          mode: 'local',
+          top_k: 3,
+          workspace,
+          include_references: true,
+        },
+      },
+    };
+
+    console.log(`[ManageUserInterview] Request body:`, JSON.stringify(requestBody, null, 2));
+
+    const response = await fetch(RAG_API_PROXY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`RAG server returned status ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    console.log(`[ManageUserInterview] Response received:`, {
+      hasResult: !!data.result,
+      hasError: !!data.error,
+      contentLength: data.result?.content?.[0]?.text?.length,
+    });
+
+    if (data.error) {
+      console.error(`[ManageUserInterview] RAG server error:`, data.error);
+      throw new Error(`RAG server error: ${data.error.message || JSON.stringify(data.error)}`);
+    }
+
+    // Extract text content from MCP response format
+    if (data.result?.content?.[0]?.text) {
+      const result = data.result.content[0].text;
+      console.log(`[ManageUserInterview] Extracted text (first 200 chars):`, result.substring(0, 200));
+      return result;
+    }
+
+    const fallbackResult = JSON.stringify(data.result || data);
+    console.log(`[ManageUserInterview] Fallback result:`, fallbackResult.substring(0, 200));
+    return fallbackResult;
+  } catch (error: any) {
+    console.error(`[ManageUserInterview] Error calling RAG server:`, error);
+    throw new Error(`Ошибка подключения к базе знаний: ${error.message}`);
+  }
+}
+
+/**
+ * Helper function to call RAG MCP server via JSON-RPC through API proxy (for client-side execution)
  */
 async function callRagServer(toolName: string, args: any) {
   try {
@@ -57,7 +124,7 @@ async function callRagApi(endpoint: string, method: string, data?: any) {
   try {
     console.log(`[RAG REST] Calling ${method} ${endpoint}`, data ? { dataKeys: Object.keys(data) } : {});
 
-    const response = await fetch(RAG_REST_PROXY, {
+    const response = await fetch(RAG_API_PROXY, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -438,12 +505,23 @@ export const validateInterviewAnswer = tool({
   },
 });
 
+
 /**
- * Simple tool to start initial interview
+ * Unified tool for managing user interview and preferences
+ * Combines functionality of checkInterviewCompleteness, startInitialInterview, and queryUserPreferences
  */
-export const startInitialInterview = tool({
-  name: 'startInitialInterview',
-  description: 'Начать или продолжить интервью с пользователем для сбора предпочтений',
+export const manageUserInterview = tool({
+  name: 'manageUserInterview',
+  description: `Универсальный инструмент для управления интервью пользователя и получения предпочтений.
+  
+Объединяет функциональность проверки статуса интервью, получения предпочтений и инициации интервью.
+
+Логика работы:
+- Если интервью пройдено полностью (100%) → возвращает все предпочтения пользователя
+- Если интервью пройдено частично (1-99%) → возвращает частичные предпочтения + недостающие вопросы
+- Если интервью не пройдено (0%) → возвращает приглашение начать интервью
+
+Используется Router Agent для принятия решений о персонализации и необходимости интервью.`,
   parameters: {
     type: 'object',
     properties: {
@@ -453,20 +531,19 @@ export const startInitialInterview = tool({
       },
       userPosition: {
         type: 'string',
-        description: 'Должность пользователя',
+        description: 'Должность пользователя (опционально, для новых интервью)',
       },
     },
-    required: ['userId', 'userPosition'],
+    required: ['userId'],
     additionalProperties: false,
   },
   execute: async (input: any) => {
     const { userId, userPosition } = input;
     
-    // Check if interview already exists and determine completion status
     try {
       const workspaceName = `${userId}_user_key_preferences`;
       
-      // Define the 7 required preference categories with question numbers
+      // Define the 7 required preference categories
       const preferenceCategories = [
         { key: 'компетенции', questionNumber: 1 },
         { key: 'стиль общения', questionNumber: 2 },
@@ -477,116 +554,244 @@ export const startInitialInterview = tool({
         { key: 'подход к решению', questionNumber: 7 },
       ];
       
+      // Check if profile exists and get full profile for debugging
+      const fullProfileResult = await callRagServerForPreferences(
+        `полный профиль пользователя ${userId} со всеми разделами: компетенции, стиль общения, предпочтения для встреч, фокусная работа, стиль работы, карьерные цели, подход к решению задач`,
+        workspaceName
+      );
+      
+      // Check if profile exists and is meaningful
+      if (!fullProfileResult || fullProfileResult.includes('не располагаю достаточной информацией') || 
+          fullProfileResult.includes('No relevant context found') || fullProfileResult.includes('не найдено')) {
+        
+        // No interview conducted
+        const startMessage = userPosition 
+          ? `Привет! Я ваш персональный ассистент. Чтобы лучше вам помогать, давайте проведем короткое интервью - всего несколько минут.
+
+Первый вопрос: вы работаете как ${userPosition}. Расскажите, в каких областях вы считаете себя экспертом? Это поможет мне лучше понимать ваши задачи.`
+          : `Привет! Я ваш персональный ассистент. Чтобы лучше вам помогать, давайте проведем короткое интервью - всего несколько минут.
+
+Первый вопрос: Расскажите, в каких областях вы считаете себя экспертом? Это поможет мне лучше понимать ваши задачи.`;
+        
+        return {
+          interviewStatus: 'not_started',
+          completeness: 0,
+          message: 'Интервью не проводилось',
+          startMessage,
+          workspace: workspaceName,
+          filledFields: 0,
+          totalFields: preferenceCategories.length,
+          missingFields: preferenceCategories.map(c => c.key),
+          nextQuestion: {
+            number: 1,
+            category: 'компетенции'
+          }
+        };
+      }
+      
+      console.log(`[ManageUserInterview] Debug - Full profile for user ${userId}:`);
+      console.log(`[ManageUserInterview] Profile length: ${fullProfileResult.length} chars`);
+      
+      // Check each category individually
       const filledFields = [];
       const missingFields = [];
+      const preferences: any = {};
       
-      // Check preference categories with controlled concurrency to avoid RAG server conflicts
-      const results = [];
-      const batchSize = 3; // Process 3 categories at a time
-      
-      for (let i = 0; i < preferenceCategories.length; i += batchSize) {
-        const batch = preferenceCategories.slice(i, i + batchSize);
+      // Check preference categories sequentially with 50ms delay between requests
+      for (let i = 0; i < preferenceCategories.length; i++) {
+        const category = preferenceCategories[i];
         
-        const batchPromises = batch.map(async (category) => {
-          try {
-            const categoryResponse = await callRagServer('lightrag_query', {
-              query: `${category.key} пользователя ${userId}`,
-              mode: 'local',
-              top_k: 1,
-              workspace: workspaceName,
-            });
+        try {
+          console.log(`[ManageUserInterview] Checking ${category.key} (${i + 1}/${preferenceCategories.length})`);
+          
+          const categoryResponse = await callRagServerForPreferences(
+            `${category.key} пользователя ${userId}`,
+            workspaceName
+          );
+          
+          // Check if we got meaningful data for this category
+          if (categoryResponse && 
+              !categoryResponse.includes('не располагаю достаточной информацией') &&
+              !categoryResponse.includes('No relevant context found') &&
+              !categoryResponse.includes('не найдено') &&
+              categoryResponse.length > 20) {
+            console.log(`[ManageUserInterview] ✅ Found data for ${category.key}: ${categoryResponse.length} chars`);
+            filledFields.push(category);
             
-            // Check if we got meaningful data for this category
-            if (categoryResponse && 
-                !categoryResponse.includes('не располагаю достаточной информацией') &&
-                !categoryResponse.includes('не найдено') &&
-                categoryResponse.length > 20) {
-              console.log(`[Interview] ✅ Found data for ${category.key}: ${categoryResponse.length} chars`);
-              return { category, found: true };
+            // Map category to preferences object
+            switch (category.key) {
+              case 'компетенции':
+                preferences.competencies = categoryResponse;
+                break;
+              case 'стиль общения':
+                preferences.communicationStyle = categoryResponse;
+                break;
+              case 'предпочтения для встреч':
+                preferences.meetingPreferences = categoryResponse;
+                break;
+              case 'фокусная работа':
+                preferences.focusTime = categoryResponse;
+                break;
+              case 'стиль работы':
+                preferences.workStyle = categoryResponse;
+                break;
+              case 'карьерные цели':
+                preferences.careerGoals = categoryResponse;
+                break;
+              case 'подход к решению':
+                preferences.problemSolvingApproach = categoryResponse;
+                break;
+            }
+          } else {
+            console.log(`[ManageUserInterview] ❌ No data for ${category.key}`);
+            missingFields.push(category);
+          }
+        } catch (error) {
+          console.log(`[ManageUserInterview] Error checking ${category.key}:`, error);
+          missingFields.push(category);
+        }
+        
+        // 50ms delay between requests to prevent server overload
+        if (i < preferenceCategories.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+      
+      // Fallback: if at least half (4/7) categories were found, retry the missing ones
+      if (filledFields.length >= 4 && missingFields.length > 0) {
+        console.log(`[ManageUserInterview] Fallback: Found ${filledFields.length}/7 categories, retrying ${missingFields.length} missing ones`);
+        
+        for (const category of missingFields) {
+          try {
+            console.log(`[ManageUserInterview] Retry checking ${category.key}`);
+            
+            const retryResponse = await callRagServerForPreferences(
+              `${category.key} пользователя ${userId}`,
+              workspaceName
+            );
+            
+            // Check if retry was successful
+            if (retryResponse && 
+                !retryResponse.includes('не располагаю достаточной информацией') &&
+                !retryResponse.includes('No relevant context found') &&
+                !retryResponse.includes('не найдено') &&
+                retryResponse.length > 20) {
+              console.log(`[ManageUserInterview] ✅ Retry successful for ${category.key}: ${retryResponse.length} chars`);
+              filledFields.push(category);
+              
+              // Map category to preferences object
+              switch (category.key) {
+                case 'компетенции':
+                  preferences.competencies = retryResponse;
+                  break;
+                case 'стиль общения':
+                  preferences.communicationStyle = retryResponse;
+                  break;
+                case 'предпочтения для встреч':
+                  preferences.meetingPreferences = retryResponse;
+                  break;
+                case 'фокусная работа':
+                  preferences.focusTime = retryResponse;
+                  break;
+                case 'стиль работы':
+                  preferences.workStyle = retryResponse;
+                  break;
+                case 'карьерные цели':
+                  preferences.careerGoals = retryResponse;
+                  break;
+                case 'подход к решению':
+                  preferences.problemSolvingApproach = retryResponse;
+                  break;
+              }
+              
+              // Remove from missing fields
+              const index = missingFields.findIndex(field => field.key === category.key);
+              if (index > -1) {
+                missingFields.splice(index, 1);
+              }
             } else {
-              console.log(`[Interview] ❌ No data for ${category.key}`);
-              return { category, found: false };
+              console.log(`[ManageUserInterview] ❌ Retry failed for ${category.key}`);
             }
           } catch (error) {
-            console.log(`[Interview] Error checking ${category.key}:`, error);
-            return { category, found: false };
+            console.log(`[ManageUserInterview] Error retrying ${category.key}:`, error);
           }
-        });
-        
-        const batchResults = await Promise.all(batchPromises);
-        results.push(...batchResults);
-        
-        // Small delay between batches to prevent server overload
-        if (i + batchSize < preferenceCategories.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
-      
-      // Process results
-      for (const result of results) {
-        if (result.found) {
-          filledFields.push(result.category);
-        } else {
-          missingFields.push(result.category);
-        }
-      }
-      
-      console.log(`[Interview] startInitialInterview check for user ${userId}`);
-      console.log(`[Interview] Filled fields: ${filledFields.length}, Missing: ${missingFields.length}`);
-      
-      if (missingFields.length === 0) {
-          // Interview is complete
-          console.log(`[Interview] ✅ Interview already complete for user ${userId}`);
-          return {
-            status: 'already_completed',
-            message: 'ok', // Интервью уже пройдено полностью - молча продолжаем работу
-          };
-        } else {
-          // Interview is incomplete - determine starting point
-          const nextQuestionNumber = Math.min(...missingFields.map(f => f.questionNumber));
-          const nextField = missingFields.find(f => f.questionNumber === nextQuestionNumber);
           
-          console.log(`[Interview] ❌ Incomplete interview for user ${userId}. Starting from question ${nextQuestionNumber}`);
-          
-          return {
-            status: 'resume',
-            message: `Продолжаем интервью с вопроса ${nextQuestionNumber}. Уже заполнено ${filledFields.length} из 7 разделов.`,
-            currentQuestion: nextQuestionNumber.toString(),
-            filledFields: filledFields.map(f => f.key),
-            missingFields: missingFields.map(f => f.key),
-            interviewState: {
-              competencies: filledFields.find(f => f.key === 'компетенции') ? 'заполнено' : '',
-              communicationStyle: filledFields.find(f => f.key === 'стиль общения') ? 'заполнено' : '',
-              meetingPreferences: filledFields.find(f => f.key === 'предпочтения для встреч') ? 'заполнено' : '',
-              focusTime: filledFields.find(f => f.key === 'фокусная работа') ? 'заполнено' : '',
-              workStyle: filledFields.find(f => f.key === 'стиль работы') ? 'заполнено' : '',
-              careerGoals: filledFields.find(f => f.key === 'карьерные цели') ? 'заполнено' : '',
-              problemSolvingApproach: filledFields.find(f => f.key === 'подход к решению') ? 'заполнено' : '',
-            },
-          };
+          // 50ms delay between retry requests
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
-      } catch (error) {
-        console.log('[Interview] Could not check status, proceeding with new interview');
       }
-    
-    // Start first question
-    const firstQuestion = `Привет! Я ваш персональный ассистент. Чтобы лучше вам помогать, давайте проведем короткое интервью - всего несколько минут.
+      
+      const completeness = Math.round((filledFields.length / preferenceCategories.length) * 100);
+      
+      console.log(`[ManageUserInterview] Final status for user ${userId}:`);
+      console.log(`[ManageUserInterview] Filled fields: ${filledFields.length}, Missing: ${missingFields.length}, Completeness: ${completeness}%`);
+      
+      // Determine status and return appropriate response
+      if (completeness === 100) {
+        // Interview is complete - return all preferences
+        return {
+          interviewStatus: 'complete',
+          completeness,
+          message: 'Профиль полный - все предпочтения доступны',
+          preferences,
+          workspace: workspaceName,
+          filledFields: filledFields.length,
+          totalFields: preferenceCategories.length,
+        };
+      } else if (completeness > 0) {
+        // Interview is incomplete - return partial preferences and missing fields
+        const nextQuestionNumber = Math.min(...missingFields.map(f => f.questionNumber));
+        const nextField = missingFields.find(f => f.questionNumber === nextQuestionNumber);
+        
+        return {
+          interviewStatus: 'incomplete',
+          completeness,
+          message: `Профиль неполный (${completeness}%) - доступны частичные предпочтения`,
+          preferences,
+          missingFields: missingFields.map(f => f.key),
+          nextQuestion: nextField ? {
+            number: nextField.questionNumber,
+            category: nextField.key
+          } : undefined,
+          workspace: workspaceName,
+          filledFields: filledFields.length,
+          totalFields: preferenceCategories.length,
+        };
+      } else {
+        // No meaningful data found despite initial check
+        const startMessage = userPosition 
+          ? `Привет! Я ваш персональный ассистент. Чтобы лучше вам помогать, давайте проведем короткое интервью - всего несколько минут.
 
-Первый вопрос: вы работаете как ${userPosition}. Расскажите, в каких областях вы считаете себя экспертом? Это поможет мне лучше понимать ваши задачи.`;
-    
-    return {
-      status: 'started',
-      message: firstQuestion,
-      currentQuestion: '1',
-      interviewState: {
-        competencies: '',
-        communicationStyle: '',
-        meetingPreferences: '',
-        focusTime: '',
-        workStyle: '',
-        careerGoals: '',
-        problemSolvingApproach: '',
-      },
-    };
+Первый вопрос: вы работаете как ${userPosition}. Расскажите, в каких областях вы считаете себя экспертом? Это поможет мне лучше понимать ваши задачи.`
+          : `Привет! Я ваш персональный ассистент. Чтобы лучше вам помогать, давайте проведем короткое интервью - всего несколько минут.
+
+Первый вопрос: Расскажите, в каких областях вы считаете себя экспертом? Это поможет мне лучше понимать ваши задачи.`;
+        
+        return {
+          interviewStatus: 'not_started',
+          completeness: 0,
+          message: 'Интервью не проводилось',
+          startMessage,
+          workspace: workspaceName,
+          filledFields: 0,
+          totalFields: preferenceCategories.length,
+          missingFields: preferenceCategories.map(c => c.key),
+          nextQuestion: {
+            number: 1,
+            category: 'компетенции'
+          }
+        };
+      }
+    } catch (error: any) {
+      console.error('[ManageUserInterview] Error managing interview:', error);
+      return {
+        interviewStatus: 'error',
+        completeness: 0,
+        message: `Ошибка при проверке статуса интервью: ${error.message}`,
+        workspace: `${userId}_user_key_preferences`,
+        filledFields: 0,
+        totalFields: 7,
+      };
+    }
   },
 });
