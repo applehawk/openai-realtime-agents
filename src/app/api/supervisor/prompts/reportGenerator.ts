@@ -1,6 +1,13 @@
+import {
+  WORD_LIMITS,
+  SENTENCE_LIMITS,
+  LENGTH_DESCRIPTIONS,
+  CONTEXT_LIMITS,
+} from '../constants';
+
 /**
  * ReportGeneratorAgent Instructions
- * 
+ *
  * This agent generates comprehensive final reports after hierarchical execution
  */
 export const reportGeneratorInstructions = `
@@ -28,13 +35,16 @@ You're called **after** hierarchical task execution when:
 Your report should include:
 
 ## 1. Executive Summary
-Brief overview of what was accomplished (20-30 words)
+Brief overview of what was accomplished (${WORD_LIMITS.EXECUTIVE_SUMMARY.min}-${WORD_LIMITS.EXECUTIVE_SUMMARY.max} words)
 
 ## 2. Detailed Results
-Comprehensive synthesis of all subtask results (100-200 words)
+Comprehensive synthesis of all subtask results (${CONTEXT_LIMITS.REPORT_FINAL.min}-${CONTEXT_LIMITS.REPORT_FINAL.max} words - MOST DETAILED section)
 - What was found/done in each subtask
 - How subtasks relate to each other
 - Key findings and results
+- Include ALL relevant details, data, and insights
+- For complex tasks, provide exhaustive documentation
+- This is the MAIN section - be thorough and comprehensive
 
 ## 3. Execution Metrics
 - Tasks completed vs failed
@@ -66,15 +76,20 @@ Extract and emphasize important insights:
 
 - Write in natural Russian
 - Use proper paragraph structure
-- Don't artificially limit length (100-200 words for complex reports)
-- Include relevant context
+- **Scale with task tree size**:
+  - Simple tasks (1-3 subtasks): ${WORD_LIMITS.SIMPLE_REPORT.min}-${WORD_LIMITS.SIMPLE_REPORT.max} words
+  - Medium tasks (4-7 subtasks): ${WORD_LIMITS.PARENT_AGGREGATION.min}-${WORD_LIMITS.PARENT_AGGREGATION.max} words
+  - Complex hierarchical (8+ subtasks): ${CONTEXT_LIMITS.REPORT_FINAL.min}-${CONTEXT_LIMITS.REPORT_FINAL.max} words
+- Include ALL relevant context, data, findings, and insights
+- For hierarchical tasks with many subtasks, document every important detail
+- Better to be too detailed than to omit important information
 
 # Output Format
 
 Return **ONLY** valid JSON:
 
 {
-  "detailedResults": "Comprehensive Russian summary (100-200 words)",
+  "detailedResults": "Comprehensive Russian summary (${LENGTH_DESCRIPTIONS.DETAILED_RESULTS})",
   "executionSummary": {
     "tasksCompleted": 5,
     "tasksFailed": 0,
@@ -89,7 +104,7 @@ Return **ONLY** valid JSON:
     "Suggested next step 1",
     "Suggested next step 2"
   ],
-  "nextResponse": "User-friendly summary (40-80 words)",
+  "nextResponse": "User-friendly summary (${WORD_LIMITS.INITIAL_RESPONSE.min}-${WORD_LIMITS.INITIAL_RESPONSE.max} words for initial response)",
   "workflowSteps": [
     "Aggregated step 1",
     "Aggregated step 2"
@@ -174,10 +189,15 @@ Return **ONLY** valid JSON:
 
 1. **Synthesize, don't list**: Create coherent narrative
 2. **Highlight key findings**: Extract insights
-3. **Be comprehensive**: 100-200 words for complex reports
+3. **Scale appropriately**:
+   - Simple (1-3 subtasks): ${WORD_LIMITS.SIMPLE_REPORT.min}-${WORD_LIMITS.SIMPLE_REPORT.max} words
+   - Medium (4-7 subtasks): ${WORD_LIMITS.PARENT_AGGREGATION.min}-${WORD_LIMITS.PARENT_AGGREGATION.max} words
+   - Complex (8+ subtasks): ${CONTEXT_LIMITS.REPORT_FINAL.min}-${CONTEXT_LIMITS.REPORT_FINAL.max} words
 4. **Provide context**: Help user understand results
 5. **Natural Russian**: Professional but friendly tone
+6. **Include ALL details**: For complex hierarchical tasks, document every subtask result, finding, and insight
+7. **Prioritize completeness over brevity**: It's better to provide too much detail than to omit important information
 
-**Remember: You're creating the final story from all the subtask chapters!**
+**Remember: You're creating the final story from all the subtask chapters! For complex tasks with many subtasks, your report should be proportionally detailed and comprehensive.**
 `;
 

@@ -58,6 +58,11 @@ import {
 } from '../taskTypes';
 import { progressEmitter, ProgressUpdate } from './progressEmitter';
 import { taskContextStore } from './taskContextStore';
+import {
+  WORD_LIMITS,
+  SENTENCE_LIMITS,
+  LENGTH_DESCRIPTIONS,
+} from '../constants';
 
 /**
  * Task complexity levels
@@ -467,7 +472,7 @@ Execute this simple task directly using MCP tools.
 **Conversation Context:**
 ${request.conversationContext.slice(0, 800)}${request.conversationContext.length > 800 ? '...' : ''}
 
-Execute this multi-step workflow using MCP tools. Provide comprehensive results (40-100+ words).
+Execute this multi-step workflow using MCP tools. Provide comprehensive results (${LENGTH_DESCRIPTIONS.COMPREHENSIVE_SUMMARY}).
 `;
 
     try {
