@@ -5,6 +5,9 @@ export async function POST(request: NextRequest) {
     const { question, userAnswer, questionNumber } = await request.json();
 
     console.log(`[ValidateAnswer] Validating answer for question ${questionNumber}:`, userAnswer);
+    console.log(`[ValidateAnswer] OPENAI_API_KEY present:`, !!process.env.OPENAI_API_KEY);
+    console.log(`[ValidateAnswer] OPENAI_API_KEY length:`, process.env.OPENAI_API_KEY?.length || 0);
+    console.log(`[ValidateAnswer] OPENAI_API_KEY prefix:`, process.env.OPENAI_API_KEY?.substring(0, 7) || 'NOT_SET');
 
     // Call OpenAI API for validation
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
