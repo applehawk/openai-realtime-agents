@@ -563,6 +563,7 @@ export const manageUserInterview = tool({
         { key: 'карьерные цели', questionNumber: 6 },
         { key: 'подход к решению', questionNumber: 7 },
       ];
+      type PreferenceCategory = (typeof preferenceCategories)[number];
       
       // Check if profile exists and get full profile for debugging
       const fullProfileResult = await callRagServerForPreferences(
@@ -603,16 +604,17 @@ export const manageUserInterview = tool({
       console.log(`[ManageUserInterview] Profile length: ${fullProfileResult.length} chars`);
       
       // Check each category individually
-      const filledFields = [];
-      const missingFields = [];
+      const filledFields: PreferenceCategory[] = [];
+      const missingFields: PreferenceCategory[] = [];
       const preferences: any = {};
+      const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       
-      // Check preference categories sequentially with 50ms delay between requests
-      for (let i = 0; i < preferenceCategories.length; i++) {
-        const category = preferenceCategories[i];
+      // Check preference categories in parallel with 50ms stagger between request starts
+      const categoryChecks = preferenceCategories.map((category, index) => (async () => {
+        await wait(index * 200);
         
         try {
-          console.log(`[ManageUserInterview] Checking ${category.key} (${i + 1}/${preferenceCategories.length})`);
+          console.log(`[ManageUserInterview] Checking ${category.key} (${index + 1}/${preferenceCategories.length})`);
           
           const categoryResponse = await callRagServerForPreferences(
             `${category.key} пользователя ${userId}`,
@@ -660,18 +662,18 @@ export const manageUserInterview = tool({
           console.log(`[ManageUserInterview] Error checking ${category.key}:`, error);
           missingFields.push(category);
         }
-        
-        // 50ms delay between requests to prevent server overload
-        if (i < preferenceCategories.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-      }
+      })());
+      
+      await Promise.all(categoryChecks);
       
       // Fallback: if at least half (4/7) categories were found, retry the missing ones
       if (filledFields.length >= 4 && missingFields.length > 0) {
         console.log(`[ManageUserInterview] Fallback: Found ${filledFields.length}/7 categories, retrying ${missingFields.length} missing ones`);
         
-        for (const category of missingFields) {
+        const missingFieldsToRetry = [...missingFields];
+        const retryChecks = missingFieldsToRetry.map((category, index) => (async () => {
+          await wait(index * 50);
+          
           try {
             console.log(`[ManageUserInterview] Retry checking ${category.key}`);
             
@@ -715,9 +717,9 @@ export const manageUserInterview = tool({
               }
               
               // Remove from missing fields
-              const index = missingFields.findIndex(field => field.key === category.key);
-              if (index > -1) {
-                missingFields.splice(index, 1);
+              const indexToRemove = missingFields.findIndex(field => field.key === category.key);
+              if (indexToRemove > -1) {
+                missingFields.splice(indexToRemove, 1);
               }
             } else {
               console.log(`[ManageUserInterview] ❌ Retry failed for ${category.key}`);
@@ -725,10 +727,9 @@ export const manageUserInterview = tool({
           } catch (error) {
             console.log(`[ManageUserInterview] Error retrying ${category.key}:`, error);
           }
-          
-          // 50ms delay between retry requests
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
+        })());
+        
+        await Promise.all(retryChecks);
       }
       
       const completeness = Math.round((filledFields.length / preferenceCategories.length) * 100);
