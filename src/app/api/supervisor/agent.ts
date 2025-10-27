@@ -21,7 +21,6 @@ export {
   decisionAgentInstructions,
   executorAgentInstructions,
   complexityAssessorInstructions,
-  delegationReviewerInstructions,
   taskPlannerInstructions,
   workflowOrchestratorInstructions,
   reportGeneratorInstructions,
@@ -32,7 +31,7 @@ export {
   decisionAgent,
   executorAgent,
   complexityAssessorAgent,
-  delegationReviewerAgent,
+  complexityAssessorAgent2, // v3.2: Enhanced with delegation
   taskPlannerAgent,
   workflowOrchestratorAgent,
   reportGeneratorAgent,

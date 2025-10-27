@@ -26,10 +26,11 @@ export const delegateToIntelligentSupervisor = tool({
   description: `
 Делегирует сложные задачи унифицированному интеллектуальному supervisor-агенту с адаптивной оценкой сложности.
 
-**НОВОЕ (v3.1): Умная делегация с возможностью возврата**
-- Supervisor теперь СНАЧАЛА проверяет, действительно ли задача сложная
-- Если задача простая (1 действие, явные параметры) → supervisor вернёт guidance для прямого выполнения
-- Если задача сложная → supervisor выполнит её сам
+**НОВОЕ (v3.2): Улучшенная делегация с единой оценкой**
+- Supervisor делает ОДНУ оценку вместо двух (экономия ~300 tokens)
+- Уровень 'tooSimple' для задач, которые primary agent может выполнить сам
+- Даже 2-7 последовательных шагов могут быть tooSimple (если нет сложной логики)
+- Если задача сложная (simple/medium/complex) → supervisor выполнит её сам
 
 **Используй КОГДА:**
 - ✅ Задача МОЖЕТ быть сложной (2+ шага, условная логика)
@@ -43,14 +44,14 @@ export const delegateToIntelligentSupervisor = tool({
 - ❌ Простое чтение/запись без логики (используй соответствующий MCP tool)
 
 **Как это работает:**
-1. **Step 0 (NEW)**: Delegation Review - проверка, нужна ли делегация
-   - Если задача простая → возврат guidance для прямого выполнения (экономия 50-70% токенов)
-   - Если задача сложная → продолжение обработки
-2. Backend автоматически оценит сложность задачи (simple/medium/complex)
-3. Выберет стратегию выполнения:
-   - Direct: прямое выполнение для простых задач (1 шаг)
-   - Flat: плоский workflow для средних задач (2-7 шагов)
-   - Hierarchical: иерархическая декомпозиция для сложных задач (8+ шагов)
+1. **Step 1 (v3.2)**: Единая оценка сложности с поддержкой делегации
+   - tooSimple: 1-7 последовательных шагов БЕЗ сложной логики → возврат guidance для primary agent
+   - simple/medium/complex: задачи со сложной логикой → supervisor выполняет
+2. Если tooSimple → возврат с guidance (экономия 70-90% токенов)
+3. Иначе выберет стратегию выполнения:
+   - Direct: прямое выполнение для простых задач (simple)
+   - Flat: плоский workflow для средних задач (medium)
+   - Hierarchical: иерархическая декомпозиция для сложных задач (complex)
 4. Выполнит задачу с прогресс-трекингом
 5. Вернёт детальный ответ с workflowSteps
 
@@ -63,9 +64,11 @@ export const delegateToIntelligentSupervisor = tool({
 - ✅ Поддерживает PLAN FIRST и EXECUTE IMMEDIATELY modes
 
 **Примеры задач:**
-- «Прочитай письмо от Анны и назначь встречу на предложенное время» → supervisor выполнит
-- «Найди свободное время завтра и создай встречу с Петром» → supervisor выполнит
-- «Прочитай последнее письмо» → supervisor вернёт guidance (слишком просто)
+- «Прочитай письмо от Анны и назначь встречу» → tooSimple (2 шага без сложной логики)
+- «Найди свободное время и создай встречу с Петром» → simple/medium (нужен анализ)
+- «Прочитай последнее письмо» → tooSimple (1 простой шаг)
+- «Если Пётр свободен, создай встречу» → medium (условная логика)
+- «Найди всех участников и отправь приглашения» → complex (массовая операция)
 
 **Параметры:**
 - taskDescription: полное описание задачи на русском (2-5 предложений)
@@ -193,14 +196,15 @@ export const delegateToIntelligentSupervisor = tool({
         delegateBack: result.delegateBack || false,
       });
 
-      // Handle delegateBack case
-      if (result.delegateBack) {
-        console.log('[intelligentSupervisorTool] ✅ Task delegated back to primary agent');
+      // Handle delegateBack case (v3.2: now based on complexity === 'tooSimple')
+      if (result.delegateBack || result.complexity === 'tooSimple') {
+        console.log('[intelligentSupervisorTool] ✅ Task is tooSimple - delegated back to primary agent');
         console.log('[intelligentSupervisorTool] Guidance:', result.delegationGuidance);
         
         if (addBreadcrumb) {
-          addBreadcrumb('[Intelligent Supervisor] Задача делегирована обратно', {
+          addBreadcrumb('[Intelligent Supervisor] Задача слишком проста - делегирована обратно', {
             guidance: result.delegationGuidance,
+            complexity: 'tooSimple',
             executionTime: result.executionTime,
           });
         }
@@ -212,7 +216,7 @@ export const delegateToIntelligentSupervisor = tool({
           nextResponse: result.nextResponse,
           complexity: result.complexity,
           executionTime: result.executionTime,
-          message: '✅ Задача проста и может быть выполнена напрямую. Следуй инструкциям в guidance.',
+          message: '✅ Задача проста (tooSimple) и может быть выполнена напрямую. Следуй инструкциям в guidance.',
         };
       }
 

@@ -5,25 +5,31 @@
  * It replaces the manual decision-making in Router Agent between Path 4 and Path 5.
  *
  * Features:
- * - Early delegation review (can delegate back to primary agent)
- * - Automatic complexity assessment (simple/medium/complex)
+ * - Enhanced complexity assessment with delegation support (tooSimple/simple/medium/complex)
+ * - Early return for tasks that primary agent can handle
  * - Adaptive strategy selection (direct/flat/hierarchical)
  * - Built-in progress tracking
  * - Unified response format
  *
- * Version: 3.1 (v3.1 - Delegation Review Integration)
- * Date: 2025-10-25
+ * Version: 3.2 (v3.2 - Enhanced Complexity Assessor)
+ * Date: 2025-10-27
+ * 
+ * v3.2 Changes:
+ * - ✅ Merged delegationReviewerAgent + complexityAssessorAgent → complexityAssessorAgent2
+ * - Added 'tooSimple' complexity level for early delegation back
+ * - One LLM call instead of two (saves ~300 tokens per task)
+ * - Expanded delegation criteria: 2-7 sequential steps can be tooSimple
  * 
  * v3.1 Changes:
- * - ✅ Integrated delegationReviewerAgent as Step 0 (before complexity assessment)
+ * - Integrated delegationReviewerAgent as Step 0 (before complexity assessment)
  * - Enables early return for simple tasks that primary agent can handle
  * - Saves 50-70% tokens for simple tasks (no complexity/breakdown needed)
  * - Faster execution and better UX (fewer hops)
  * 
  * v3.0 Changes:
  * - Replaced monolithic supervisorAgent with 5 specialized agents
- * - Added delegationReviewerAgent for delegation decisions (NOW ACTIVE in v3.1)
- * - Added complexityAssessorAgent for complexity assessment
+ * - Added delegationReviewerAgent for delegation decisions (MERGED in v3.2)
+ * - Added complexityAssessorAgent for complexity assessment (ENHANCED in v3.2)
  * - Added taskPlannerAgent for PLAN FIRST mode
  * - Added workflowOrchestratorAgent for workflow execution
  * - Added reportGeneratorAgent for final reports
@@ -35,12 +41,12 @@ import { run } from '@openai/agents';
 import {
   decisionAgent,
   executorAgent,
-  complexityAssessorAgent,
-  delegationReviewerAgent,
   taskPlannerAgent,
   workflowOrchestratorAgent,
   reportGeneratorAgent,
 } from '../agent';
+// Import new enhanced complexityAssessorAgent2 directly
+import { complexityAssessorAgent2 } from '../agents/complexityAssessor2';
 import { TaskOrchestrator } from '../taskOrchestrator';
 import {
   TaskBreakdownRequest,
@@ -55,8 +61,9 @@ import { taskContextStore } from './taskContextStore';
 
 /**
  * Task complexity levels
+ * v3.2: Added 'tooSimple' for tasks that should delegate back to primary agent
  */
-export type TaskComplexity = 'simple' | 'medium' | 'complex';
+export type TaskComplexity = 'tooSimple' | 'simple' | 'medium' | 'complex';
 
 /**
  * Execution strategies
@@ -172,39 +179,8 @@ export class IntelligentSupervisor {
 
     const executionMode = request.executionMode || 'auto';
 
-    // Step 0 (NEW v3.1): Review delegation - should task go back to primary agent?
-    this.emitProgress('delegation_review', 'Проверяю, нужна ли делегация...', 5);
-    const delegationReview = await this.reviewDelegation(
-      request.taskDescription,
-      request.conversationContext
-    );
-
-    console.log('[IntelligentSupervisor] Delegation review:', delegationReview);
-
-    // If delegateBack, return early with guidance for primary agent
-    if (delegationReview.decision === 'delegateBack') {
-      console.log('[IntelligentSupervisor] ✅ Delegating back to primary agent');
-      this.emitProgress('delegate_back', 'Задача может быть выполнена primary agent', 100, {
-        guidance: delegationReview.guidance,
-      });
-
-      const executionTime = Date.now() - startTime;
-      return {
-        strategy: 'direct',
-        complexity: 'simple',
-        nextResponse: delegationReview.guidance || 'Выполни задачу с помощью доступных инструментов',
-        workflowSteps: ['Делегирую задачу обратно primary agent'],
-        progress: { current: 1, total: 1 },
-        executionTime,
-        delegateBack: true,
-        delegationGuidance: delegationReview.guidance,
-      };
-    }
-
-    console.log('[IntelligentSupervisor] ✋ Handling task personally (not delegating back)');
-
-    // Step 1: Assess complexity
-    this.emitProgress('complexity_assessed', 'Оцениваю сложность задачи...', 10);
+    // Step 1 (v3.2): Enhanced complexity assessment with delegation support
+    this.emitProgress('complexity_assessed', 'Оцениваю сложность и необходимость делегации...', 10);
     const complexityAssessment = await this.assessComplexity(
       request.taskDescription,
       request.conversationContext
@@ -215,6 +191,28 @@ export class IntelligentSupervisor {
       complexity: complexityAssessment.complexity,
       reasoning: complexityAssessment.reasoning,
     });
+
+    // If tooSimple, delegate back to primary agent (v3.2)
+    if (complexityAssessment.complexity === 'tooSimple' && complexityAssessment.shouldDelegateBack) {
+      console.log('[IntelligentSupervisor] ✅ Task is tooSimple - delegating back to primary agent');
+      this.emitProgress('delegate_back', 'Задача может быть выполнена primary agent', 100, {
+        guidance: complexityAssessment.guidance,
+      });
+
+      const executionTime = Date.now() - startTime;
+      return {
+        strategy: 'direct',
+        complexity: 'tooSimple',
+        nextResponse: complexityAssessment.guidance || 'Выполни задачу с помощью доступных инструментов',
+        workflowSteps: ['Делегирую задачу обратно primary agent'],
+        progress: { current: 1, total: 1 },
+        executionTime,
+        delegateBack: true,
+        delegationGuidance: complexityAssessment.guidance,
+      };
+    }
+
+    console.log('[IntelligentSupervisor] ✋ Handling task personally (complexity:', complexityAssessment.complexity, ')');
 
     // Step 2: Select strategy based on complexity and config
     const strategy = this.selectStrategy(complexityAssessment.complexity);
@@ -278,111 +276,37 @@ export class IntelligentSupervisor {
     return result;
   }
 
-  /**
-   * Step 0 (NEW v3.1): Review delegation using DelegationReviewerAgent
-   * 
-   * Determines if task should be delegated back to primary agent or handled by supervisor.
-   * Uses gpt-4o-mini for cost efficiency (binary decision task).
-   * 
-   * Benefits:
-   * - Saves 50-70% tokens for simple tasks (no complexity assessment, no breakdown)
-   * - Faster execution (primary agent handles directly)
-   * - Better UX (fewer hops)
-   * 
-   * Decision criteria:
-   * - delegateBack: single tool call, clear params, no conditional logic
-   * - handlePersonally: multi-step, conditional logic, cross-referencing
-   */
-  private async reviewDelegation(
-    taskDescription: string,
-    conversationContext: string
-  ): Promise<{
-    decision: 'delegateBack' | 'handlePersonally';
-    reasoning: string;
-    confidence: string;
-    guidance: string | null;
-  }> {
-    console.log('[IntelligentSupervisor] Reviewing delegation with DelegationReviewerAgent (gpt-4o-mini)...');
-
-    const reviewPrompt = `
-**Task:** ${taskDescription}
-
-**Conversation Context:** 
-${conversationContext.slice(0, 500)}${conversationContext.length > 500 ? '...' : ''}
-
-Should this task be delegated back to primary agent or handled by supervisor?
-`;
-
-    try {
-      const result = await run(delegationReviewerAgent, reviewPrompt);
-      const content =
-        typeof result.finalOutput === 'string'
-          ? result.finalOutput
-          : JSON.stringify(result.finalOutput);
-
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        console.warn('[IntelligentSupervisor] No JSON in delegation review, defaulting to handlePersonally');
-        return {
-          decision: 'handlePersonally',
-          reasoning: 'Failed to parse delegation review',
-          confidence: 'low',
-          guidance: null,
-        };
-      }
-
-      const review = JSON.parse(jsonMatch[0]);
-      
-      console.log('[IntelligentSupervisor] Delegation reviewed:', {
-        decision: review.decision,
-        confidence: review.confidence,
-        reasoning: review.reasoning,
-        hasGuidance: !!review.guidance,
-      });
-      
-      return {
-        decision: review.decision || 'handlePersonally',
-        reasoning: review.reasoning || 'No reasoning provided',
-        confidence: review.confidence || 'medium',
-        guidance: review.guidance || null,
-      };
-    } catch (error) {
-      console.error('[IntelligentSupervisor] DelegationReviewerAgent error:', error);
-      // Default to handlePersonally on error (safer)
-      return {
-        decision: 'handlePersonally',
-        reasoning: 'Error during delegation review',
-        confidence: 'low',
-        guidance: null,
-      };
-    }
-  }
 
   /**
-   * Step 1: Assess task complexity using ComplexityAssessorAgent (v3.0)
+   * Step 1: Enhanced complexity assessment with delegation support (v3.2)
    * 
-   * v3.0: Now uses specialized ComplexityAssessorAgent with focused prompt
-   * v3.1: Uses gpt-4o-mini for 94% cost savings (simple classification task)
-   * Token savings: ~2300 tokens per call (vs supervisorAgent)
+   * v3.2: Uses complexityAssessorAgent2 which combines delegation + complexity
+   * - Returns 'tooSimple' for tasks that should delegate back
+   * - Includes guidance for primary agent when delegating
+   * - One LLM call instead of two (saves ~300 tokens)
    */
   private async assessComplexity(
     taskDescription: string,
     conversationContext: string
-  ): Promise<{ complexity: TaskComplexity; reasoning: string }> {
-    console.log('[IntelligentSupervisor] Assessing complexity with ComplexityAssessorAgent (gpt-4o-mini)...');
+  ): Promise<{
+    complexity: TaskComplexity;
+    reasoning: string;
+    shouldDelegateBack?: boolean;
+    guidance?: string;
+  }> {
+    console.log('[IntelligentSupervisor] Assessing complexity with enhanced ComplexityAssessorAgent2...');
 
-    // v3.0: Simplified prompt - agent already knows its job
     const assessmentPrompt = `
 **Task:** ${taskDescription}
 
 **Conversation Context:** 
 ${conversationContext.slice(0, 500)}${conversationContext.length > 500 ? '...' : ''}
 
-Analyze this task and determine complexity level (simple/medium/complex).
+Assess if this task should delegate back to primary agent (tooSimple) or determine complexity level.
 `;
 
     try {
-      const result = await run(complexityAssessorAgent, assessmentPrompt);
+      const result = await run(complexityAssessorAgent2, assessmentPrompt);
       const content =
         typeof result.finalOutput === 'string'
           ? result.finalOutput
@@ -396,18 +320,22 @@ Analyze this task and determine complexity level (simple/medium/complex).
 
       const assessment = JSON.parse(jsonMatch[0]);
       
-      console.log('[IntelligentSupervisor] Complexity assessed:', {
+      console.log('[IntelligentSupervisor] Enhanced complexity assessed:', {
         complexity: assessment.complexity,
+        shouldDelegateBack: assessment.shouldDelegateBack,
         estimatedSteps: assessment.estimatedSteps,
         reasoning: assessment.reasoning,
+        hasGuidance: !!assessment.guidance,
       });
       
       return {
         complexity: assessment.complexity || 'medium',
         reasoning: assessment.reasoning || 'No reasoning provided',
+        shouldDelegateBack: assessment.shouldDelegateBack || false,
+        guidance: assessment.guidance || null,
       };
     } catch (error) {
-      console.error('[IntelligentSupervisor] ComplexityAssessorAgent error:', error);
+      console.error('[IntelligentSupervisor] ComplexityAssessorAgent2 error:', error);
       return { complexity: 'medium', reasoning: 'Error during assessment' };
     }
   }
@@ -416,7 +344,8 @@ Analyze this task and determine complexity level (simple/medium/complex).
    * Step 2: Select execution strategy based on complexity
    */
   private selectStrategy(complexity: TaskComplexity): ExecutionStrategy {
-    if (complexity === 'simple') {
+    // tooSimple should not reach here (early return), but handle just in case
+    if (complexity === 'tooSimple' || complexity === 'simple') {
       return 'direct';
     }
 
