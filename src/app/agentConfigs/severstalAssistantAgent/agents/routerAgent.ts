@@ -17,7 +17,7 @@ import { interviewAgent, setInterviewAgentHandoff } from './interviewAgent';
 
 // Tools for direct execution and delegation
 import { delegateToIntelligentSupervisor } from '../tools/intelligentSupervisorTool'; // Unified supervisor
-import { getCurrentUserInfo } from '../tools/userInfoTool';
+import { getCurrentUserInfo } from '../tools/interview/userInfoTool';
 import { queryUserPreferences, updateUserPreferences, checkInterviewCompleteness } from '../tools/rag/userPreferencesTool';
 
 export const routerAgent = new RealtimeAgent({
