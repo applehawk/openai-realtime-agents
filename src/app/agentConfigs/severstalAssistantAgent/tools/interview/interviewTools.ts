@@ -303,11 +303,11 @@ ${updatedState.problemSolvingApproach || 'Не указано'}
 });
 
 /**
- * Tool for validating interview answers using LLM
+ * Tool for validating interview answers using backend API
  */
 export const validateInterviewAnswer = tool({
   name: 'validateInterviewAnswer',
-  description: `Валидация качества ответа пользователя на вопрос интервью с помощью LLM.
+  description: `Валидация качества ответа пользователя на вопрос интервью через бекенд API.
   
 Анализирует ответ пользователя и определяет:
 - Качественный ответ (достаточно деталей, релевантен вопросу)
@@ -336,68 +336,28 @@ export const validateInterviewAnswer = tool({
   execute: async (input: any) => {
     const { question, userAnswer, questionNumber } = input;
     
-    console.log(`[Interview] Validating answer for question ${questionNumber}`);
+    console.log(`[Interview] Validating answer for question ${questionNumber} via backend API`);
     
     try {
-      // Call OpenAI API directly for validation
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      // Call backend API for validation
+      const response = await fetch('/api/validate-answer', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: `Вы эксперт по анализу ответов в интервью. Ваша задача - определить качество ответа пользователя.
-
-ВАЖНО: Будьте МЯГКИМИ в оценке. Пропускайте почти все ответы, кроме явно нерелевантных.
-
-Критерии НЕкачественного ответа (только эти случаи должны возвращать isValid: false):
-- Полностью нерелевантный ответ (не по теме вопроса)
-- Бессмысленный текст ("ля-ля-ля", "раз два три", "абвгд")
-- Очевидно случайные символы или набор букв
-- Ответы, которые явно не относятся к вопросу
-- Общие фразы - (Не знаю, как обычно, по-разному)
-
-Критерии качественного ответа (все остальные случаи):
-- Любой осмысленный ответ, даже короткий
-- Ответы типа "да", "нет" - принимайте как валидные
-- Короткие ответы - принимайте как валидные
-- Любой ответ, который хоть как-то связан с вопросом
-
-Верните JSON:
-{
-  "isValid": true/false,
-  "reason": "краткое объяснение",
-  "suggestion": "предложение для переформулировки вопроса (если isValid = false)"
-}`
-            },
-            {
-              role: 'user',
-              content: `Вопрос ${questionNumber}: ${question}
-
-Ответ пользователя: ${userAnswer}
-
-Проанализируйте качество ответа.`
-            }
-          ],
-          temperature: 0.3,
+          question,
+          userAnswer,
+          questionNumber,
         }),
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[Interview] OpenAI API error: ${response.status} - ${errorText}`);
-        throw new Error(`OpenAI API error: ${response.status}`);
+        throw new Error(`Backend API error: ${response.status}`);
       }
 
-      const data = await response.json();
-      const validationResult = JSON.parse(data.choices[0].message.content);
-
-      console.log(`[Interview] Validation result for question ${questionNumber}:`, validationResult);
+      const validationResult = await response.json();
+      console.log(`[Interview] Backend validation result for question ${questionNumber}:`, validationResult);
 
       return {
         isValid: validationResult.isValid,
@@ -407,11 +367,11 @@ export const validateInterviewAnswer = tool({
         userAnswer,
       };
     } catch (error: any) {
-      console.error('[Interview] Error validating answer:', error);
+      console.error('[Interview] Error validating answer via backend:', error);
       // Fallback: consider answer valid if validation fails
       return {
         isValid: true,
-        reason: 'Ошибка валидации, считаем ответ валидным',
+        reason: 'Ошибка валидации через бекенд, считаем ответ валидным',
         suggestion: null,
         questionNumber,
         userAnswer,
