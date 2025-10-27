@@ -137,40 +137,82 @@ async function checkInterviewStatus(userId: string) {
         !interviewData.response.includes('не найдено') &&
         interviewData.response.length > 50) {
       
-      // Define required fields for complete interview
-      const requiredFields = [
-        { key: 'компетенции', patterns: ['компетенци', 'эксперт', 'навык'] },
-        { key: 'стиль общения', patterns: ['стиль', 'общени', 'коммуникац'] },
-        { key: 'предпочтения для встреч', patterns: ['встреч', 'предпочтен', 'время'] },
-        { key: 'фокусная работа', patterns: ['фокус', 'концентрац', 'отвлечен'] },
-        { key: 'стиль работы', patterns: ['работ', 'задач', 'проект'] },
-        { key: 'карьерные цели', patterns: ['карьер', 'цел', 'развит'] },
-        { key: 'подход к решению', patterns: ['подход', 'решен', 'задач'] },
+      // Define the 7 required preference categories
+      const preferenceCategories = [
+        'компетенции',
+        'стиль общения', 
+        'предпочтения для встреч',
+        'фокусная работа',
+        'стиль работы',
+        'карьерные цели',
+        'подход к решению'
       ];
       
-      const responseText = interviewData.response.toLowerCase();
       const filledFields = [];
       const missingFields = [];
       
-      for (const field of requiredFields) {
-        const isPresent = field.patterns.some(pattern => responseText.includes(pattern));
-        if (isPresent) {
-          filledFields.push(field);
-        } else {
-          missingFields.push(field);
+      // Check preference categories with controlled concurrency to avoid RAG server conflicts
+      const results = [];
+      const batchSize = 3; // Process 3 categories at a time
+      
+      for (let i = 0; i < preferenceCategories.length; i += batchSize) {
+        const batch = preferenceCategories.slice(i, i + batchSize);
+        
+        const batchPromises = batch.map(async (category) => {
+          try {
+            const categoryResponse = await callRagApiDirect('/query', 'POST', {
+              query: `${category} пользователя ${userId}`,
+              mode: 'local',
+              top_k: 1,
+              workspace: workspaceName,
+            });
+            
+            // Check if we got meaningful data for this category
+            if (categoryResponse && categoryResponse.response && 
+                !categoryResponse.response.includes('не располагаю достаточной информацией') &&
+                !categoryResponse.response.includes('не найдено') &&
+                categoryResponse.response.length > 20) {
+              console.log(`[Interview API] ✅ Found data for ${category}: ${categoryResponse.response.length} chars`);
+              return { category, found: true };
+            } else {
+              console.log(`[Interview API] ❌ No data for ${category}`);
+              return { category, found: false };
+            }
+          } catch (error) {
+            console.log(`[Interview API] Error checking ${category}:`, error);
+            return { category, found: false };
+          }
+        });
+        
+        const batchResults = await Promise.all(batchPromises);
+        results.push(...batchResults);
+        
+        // Small delay between batches to prevent server overload
+        if (i + batchSize < preferenceCategories.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
       
-      const completeness = Math.round((filledFields.length / requiredFields.length) * 100);
+      // Process results
+      for (const result of results) {
+        if (result.found) {
+          filledFields.push({ key: result.category });
+        } else {
+          missingFields.push({ key: result.category });
+        }
+      }
+      
+      const completeness = Math.round((filledFields.length / preferenceCategories.length) * 100);
       
       return NextResponse.json({
         hasInterview: true,
         message: completeness === 100 ? 'Интервью завершено полностью' : `Интервью завершено на ${completeness}%`,
         completeness,
         filledFields: filledFields.length,
-        totalFields: requiredFields.length,
+        totalFields: preferenceCategories.length,
         missingFields: missingFields.map(f => f.key),
         interviewData: interviewData.response,
+        debugProfile: interviewData.response, // Full profile for debugging
       });
     }
     
@@ -178,6 +220,7 @@ async function checkInterviewStatus(userId: string) {
       hasInterview: false,
       message: 'Первичное интервью не проводилось',
       completeness: 0,
+      debugProfile: 'No interview data found', // Debug info
     });
   } catch (error: any) {
     console.error('Error checking interview status:', error);
@@ -185,6 +228,7 @@ async function checkInterviewStatus(userId: string) {
       hasInterview: false,
       message: `Ошибка при проверке статуса интервью: ${error.message}`,
       completeness: 0,
+      debugProfile: `Error: ${error.message}`, // Debug info
     });
   }
 }

@@ -10,25 +10,30 @@ const RAG_API_PROXY = '/api/rag';
 async function callRagServerForPreferences(query: string, workspace: string) {
   try {
     console.log(`[UserPreferences] Querying workspace: ${workspace}`);
+    console.log(`[UserPreferences] Query: ${query}`);
+
+    const requestBody = {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method: 'tools/call',
+      params: {
+        name: 'lightrag_query',
+        arguments: {
+          query,
+          mode: 'local',
+          top_k: 3,
+          workspace,
+          include_references: true,
+        },
+      },
+    };
+
+    console.log(`[UserPreferences] Request body:`, JSON.stringify(requestBody, null, 2));
 
     const response = await fetch(RAG_API_PROXY, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: Date.now(),
-        method: 'tools/call',
-        params: {
-          name: 'lightrag_query',
-          arguments: {
-            query,
-            mode: 'local',
-            top_k: 3,
-            workspace,
-            include_references: true,
-          },
-        },
-      }),
+      body: JSON.stringify(requestBody),
       signal: AbortSignal.timeout(30000),
     });
 
@@ -37,17 +42,28 @@ async function callRagServerForPreferences(query: string, workspace: string) {
     }
 
     const data = await response.json();
+    
+    console.log(`[UserPreferences] Response received:`, {
+      hasResult: !!data.result,
+      hasError: !!data.error,
+      contentLength: data.result?.content?.[0]?.text?.length,
+    });
 
     if (data.error) {
+      console.error(`[UserPreferences] RAG server error:`, data.error);
       throw new Error(`RAG server error: ${data.error.message || JSON.stringify(data.error)}`);
     }
 
     // Extract text content from MCP response format
     if (data.result?.content?.[0]?.text) {
-      return data.result.content[0].text;
+      const result = data.result.content[0].text;
+      console.log(`[UserPreferences] Extracted text (first 200 chars):`, result.substring(0, 200));
+      return result;
     }
 
-    return JSON.stringify(data.result || data);
+    const fallbackResult = JSON.stringify(data.result || data);
+    console.log(`[UserPreferences] Fallback result:`, fallbackResult.substring(0, 200));
+    return fallbackResult;
   } catch (error: any) {
     console.error(`[UserPreferences] Error:`, error);
     throw new Error(`Ошибка подключения к базе знаний: ${error.message}`);
@@ -189,6 +205,8 @@ export const checkInterviewCompleteness = tool({
     
     try {
       const workspaceName = `${userId}_user_key_preferences`;
+      
+      // Get full profile for debugging purposes
       const result = await callRagServerForPreferences(
         `полный профиль пользователя ${userId} со всеми разделами: компетенции, стиль общения, предпочтения для встреч, фокусная работа, стиль работы, карьерные цели, подход к решению задач`,
         workspaceName
@@ -202,35 +220,79 @@ export const checkInterviewCompleteness = tool({
           message: 'Интервью не проводилось',
           completeness: 0,
           missingFields: [],
+          debugProfile: result, // Add debug info even for empty profiles
         };
       }
       
-      // Define required fields for complete interview
-      const requiredFields = [
-        { key: 'компетенции', patterns: ['компетенци', 'эксперт', 'навык'] },
-        { key: 'стиль общения', patterns: ['стиль', 'общени', 'коммуникац'] },
-        { key: 'предпочтения для встреч', patterns: ['встреч', 'предпочтен', 'время'] },
-        { key: 'фокусная работа', patterns: ['фокус', 'концентрац', 'отвлечен'] },
-        { key: 'стиль работы', patterns: ['работ', 'задач', 'проект'] },
-        { key: 'карьерные цели', patterns: ['карьер', 'цел', 'развит'] },
-        { key: 'подход к решению', patterns: ['подход', 'решен', 'задач'] },
+      console.log(`[InterviewCompleteness] Debug - Full profile for user ${userId}:`);
+      console.log(`[InterviewCompleteness] Profile length: ${result.length} chars`);
+      console.log(`[InterviewCompleteness] Profile content: ${result.substring(0, 500)}${result.length > 500 ? '...' : ''}`);
+      
+      // Define the 7 required preference categories
+      const preferenceCategories = [
+        'компетенции',
+        'стиль общения', 
+        'предпочтения для встреч',
+        'фокусная работа',
+        'стиль работы',
+        'карьерные цели',
+        'подход к решению'
       ];
       
-      const responseText = result.toLowerCase();
       const missingFields = [];
       let filledFields = 0;
       
-      // Check each required field
-      for (const field of requiredFields) {
-        const isPresent = field.patterns.some(pattern => responseText.includes(pattern));
-        if (isPresent) {
-          filledFields++;
-        } else {
-          missingFields.push(field.key);
+      // Check preference categories with controlled concurrency to avoid RAG server conflicts
+      const results = [];
+      const batchSize = 3; // Process 3 categories at a time
+      
+      for (let i = 0; i < preferenceCategories.length; i += batchSize) {
+        const batch = preferenceCategories.slice(i, i + batchSize);
+        
+        const batchPromises = batch.map(async (category) => {
+          try {
+            const categoryResult = await callRagServerForPreferences(
+              `${category} пользователя ${userId}`,
+              workspaceName
+            );
+            
+            // Check if we got meaningful data for this category
+            if (categoryResult && 
+                !categoryResult.includes('не располагаю достаточной информацией') &&
+                !categoryResult.includes('No relevant context found') &&
+                !categoryResult.includes('не найдено') &&
+                categoryResult.length > 20) {
+              console.log(`[InterviewCompleteness] ✅ Found data for ${category}: ${categoryResult.length} chars`);
+              return { category, found: true };
+            } else {
+              console.log(`[InterviewCompleteness] ❌ No data for ${category}`);
+              return { category, found: false };
+            }
+          } catch (error) {
+            console.log(`[InterviewCompleteness] Error checking ${category}:`, error);
+            return { category, found: false };
+          }
+        });
+        
+        const batchResults = await Promise.all(batchPromises);
+        results.push(...batchResults);
+        
+        // Small delay between batches to prevent server overload
+        if (i + batchSize < preferenceCategories.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
       
-      const completeness = Math.round((filledFields / requiredFields.length) * 100);
+      // Process results
+      for (const result of results) {
+        if (result.found) {
+          filledFields++;
+        } else {
+          missingFields.push(result.category);
+        }
+      }
+      
+      const completeness = Math.round((filledFields / preferenceCategories.length) * 100);
       
       // Determine status
       let status;
@@ -249,9 +311,10 @@ export const checkInterviewCompleteness = tool({
                 'Интервью не проводилось',
         completeness,
         filledFields,
-        totalFields: requiredFields.length,
+        totalFields: preferenceCategories.length,
         missingFields,
         profileLength: result.length,
+        debugProfile: result, // Full profile for debugging
       };
     } catch (error: any) {
       console.error('[InterviewCompleteness] Error checking completeness:', error);

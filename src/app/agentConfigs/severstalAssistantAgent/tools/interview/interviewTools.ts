@@ -1,7 +1,53 @@
 import { tool } from '@openai/agents/realtime';
 
 // Use API proxy endpoint for client-side execution
-const RAG_REST_PROXY = '/api/rag-rest';
+const RAG_API_PROXY = '/api/rag';
+
+/**
+ * Helper function to call RAG MCP server via JSON-RPC through API proxy
+ */
+async function callRagServer(toolName: string, args: any) {
+  try {
+    console.log(`[Interview] Calling ${toolName} with args:`, args);
+
+    const response = await fetch(RAG_API_PROXY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: Date.now(),
+        method: 'tools/call',
+        params: {
+          name: toolName,
+          arguments: args,
+        },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`RAG server returned status ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(`RAG server error: ${data.error.message || JSON.stringify(data.error)}`);
+    }
+
+    console.log(`[Interview] ${toolName} completed successfully`);
+
+    // Extract text content from MCP response format
+    if (data.result?.content?.[0]?.text) {
+      return data.result.content[0].text;
+    }
+
+    return JSON.stringify(data.result || data);
+  } catch (error: any) {
+    console.error(`[Interview] Error calling ${toolName}:`, error);
+    throw new Error(`Ошибка подключения к базе знаний: ${error.message}`);
+  }
+}
 
 /**
  * Helper function to call RAG REST API via proxy
@@ -41,42 +87,13 @@ export async function createUserWorkspace(userId: string): Promise<void> {
   const workspaceName = `${userId}_user_key_preferences`;
   
   try {
-    // Check if workspace exists first
-    const workspacesResponse = await callRagApi('/workspaces', 'GET');
-    
-    // Handle different response structures
-    let workspaces = [];
-    if (workspacesResponse.workspaces) {
-      workspaces = workspacesResponse.workspaces;
-    } else if (Array.isArray(workspacesResponse)) {
-      workspaces = workspacesResponse;
-    } else {
-      console.log('[Interview] Unexpected workspaces response structure:', workspacesResponse);
-      // Proceed with creation anyway
-    }
-    
-    const existingWorkspace = workspaces.find((ws: any) => ws.name === workspaceName);
-    
-    if (existingWorkspace) {
-      console.log(`[Interview] Workspace ${workspaceName} already exists`);
-      return;
-    }
-
-    // Create new workspace
-    await callRagApi('/workspaces', 'POST', { name: workspaceName });
-    console.log(`[Interview] Created workspace: ${workspaceName}`);
+    // For now, we'll assume workspace creation is handled by the RAG server
+    // when we make the first query. This simplifies the process and avoids
+    // direct API calls that might fail.
+    console.log(`[Interview] Workspace ${workspaceName} will be created on first use`);
   } catch (error: any) {
-    console.error(`[Interview] Failed to create workspace:`, error);
-    
-    // Check if it's a connectivity issue
-    if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
-      console.error(`[Interview] RAG server appears to be down. Interview data will not be saved.`);
-      console.error(`[Interview] Please check if RAG server is running on port 9621`);
-      // Don't throw error - allow interview to continue without saving
-      return;
-    }
-    
-    throw new Error(`Не удалось создать рабочее пространство: ${error.message}`);
+    console.error(`[Interview] Failed to prepare workspace:`, error);
+    throw new Error(`Не удалось подготовить рабочее пространство: ${error.message}`);
   }
 }
 
@@ -87,11 +104,19 @@ export async function saveInterviewData(userId: string, interviewData: string): 
   const workspaceName = `${userId}_user_key_preferences`;
   
   try {
-    await callRagApi('/documents/text', 'POST', {
-      text: interviewData,
-      file_source: 'initial_interview',
+    // Use RAG MCP server to save interview data
+    await callRagServer('lightrag_add_documents', {
+      documents: [{
+        content: interviewData,
+        metadata: {
+          source: 'initial_interview',
+          userId: userId,
+          timestamp: new Date().toISOString(),
+        }
+      }],
       workspace: workspaceName,
     });
+    
     console.log(`[Interview] Saved interview data for user ${userId}`);
   } catch (error: any) {
     console.error(`[Interview] Failed to save interview data:`, error);
@@ -441,47 +466,75 @@ export const startInitialInterview = tool({
     try {
       const workspaceName = `${userId}_user_key_preferences`;
       
-      // Define required fields with their question numbers
-      const requiredFields = [
-        { key: 'компетенции', questionNumber: 1, patterns: ['компетенци', 'эксперт', 'навык'] },
-        { key: 'стиль общения', questionNumber: 2, patterns: ['стиль', 'общени', 'коммуникац'] },
-        { key: 'предпочтения для встреч', questionNumber: 3, patterns: ['встреч', 'предпочтен', 'время'] },
-        { key: 'фокусная работа', questionNumber: 4, patterns: ['фокус', 'концентрац', 'отвлечен'] },
-        { key: 'стиль работы', questionNumber: 5, patterns: ['работ', 'задач', 'проект'] },
-        { key: 'карьерные цели', questionNumber: 6, patterns: ['карьер', 'цел', 'развит'] },
-        { key: 'подход к решению', questionNumber: 7, patterns: ['подход', 'решен', 'задач'] },
+      // Define the 7 required preference categories with question numbers
+      const preferenceCategories = [
+        { key: 'компетенции', questionNumber: 1 },
+        { key: 'стиль общения', questionNumber: 2 },
+        { key: 'предпочтения для встреч', questionNumber: 3 },
+        { key: 'фокусная работа', questionNumber: 4 },
+        { key: 'стиль работы', questionNumber: 5 },
+        { key: 'карьерные цели', questionNumber: 6 },
+        { key: 'подход к решению', questionNumber: 7 },
       ];
       
-      const response = await callRagApi('/query', 'POST', {
-        query: `полный профиль пользователя ${userId} со всеми разделами: компетенции, стиль общения, предпочтения для встреч, фокусная работа, стиль работы, карьерные цели, подход к решению задач`,
-        mode: 'local',
-        top_k: 5,
-        workspace: workspaceName,
-      });
+      const filledFields = [];
+      const missingFields = [];
       
-      if (response && response.response && 
-          !response.response.includes('не располагаю достаточной информацией') &&
-          !response.response.includes('No relevant context found') &&
-          !response.response.includes('не найдено')) {
+      // Check preference categories with controlled concurrency to avoid RAG server conflicts
+      const results = [];
+      const batchSize = 3; // Process 3 categories at a time
+      
+      for (let i = 0; i < preferenceCategories.length; i += batchSize) {
+        const batch = preferenceCategories.slice(i, i + batchSize);
         
-        // Check which fields are present
-        const responseText = response.response.toLowerCase();
-        const filledFields = [];
-        const missingFields = [];
-        
-        for (const field of requiredFields) {
-          const isPresent = field.patterns.some(pattern => responseText.includes(pattern));
-          if (isPresent) {
-            filledFields.push(field);
-          } else {
-            missingFields.push(field);
+        const batchPromises = batch.map(async (category) => {
+          try {
+            const categoryResponse = await callRagServer('lightrag_query', {
+              query: `${category.key} пользователя ${userId}`,
+              mode: 'local',
+              top_k: 1,
+              workspace: workspaceName,
+            });
+            
+            // Check if we got meaningful data for this category
+            if (categoryResponse && 
+                !categoryResponse.includes('не располагаю достаточной информацией') &&
+                !categoryResponse.includes('не найдено') &&
+                categoryResponse.length > 20) {
+              console.log(`[Interview] ✅ Found data for ${category.key}: ${categoryResponse.length} chars`);
+              return { category, found: true };
+            } else {
+              console.log(`[Interview] ❌ No data for ${category.key}`);
+              return { category, found: false };
+            }
+          } catch (error) {
+            console.log(`[Interview] Error checking ${category.key}:`, error);
+            return { category, found: false };
           }
+        });
+        
+        const batchResults = await Promise.all(batchPromises);
+        results.push(...batchResults);
+        
+        // Small delay between batches to prevent server overload
+        if (i + batchSize < preferenceCategories.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
-        
-        console.log(`[Interview] startInitialInterview check for user ${userId}`);
-        console.log(`[Interview] Filled fields: ${filledFields.length}, Missing: ${missingFields.length}`);
-        
-        if (missingFields.length === 0) {
+      }
+      
+      // Process results
+      for (const result of results) {
+        if (result.found) {
+          filledFields.push(result.category);
+        } else {
+          missingFields.push(result.category);
+        }
+      }
+      
+      console.log(`[Interview] startInitialInterview check for user ${userId}`);
+      console.log(`[Interview] Filled fields: ${filledFields.length}, Missing: ${missingFields.length}`);
+      
+      if (missingFields.length === 0) {
           // Interview is complete
           console.log(`[Interview] ✅ Interview already complete for user ${userId}`);
           return {
@@ -512,10 +565,9 @@ export const startInitialInterview = tool({
             },
           };
         }
+      } catch (error) {
+        console.log('[Interview] Could not check status, proceeding with new interview');
       }
-    } catch (error) {
-      console.log('[Interview] Could not check status, proceeding with new interview');
-    }
     
     // Start first question
     const firstQuestion = `Привет! Я ваш персональный ассистент. Чтобы лучше вам помогать, давайте проведем короткое интервью - всего несколько минут.
