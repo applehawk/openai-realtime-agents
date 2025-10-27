@@ -1,5 +1,4 @@
 import { tool } from '@openai/agents/realtime';
-import { callRagApiDirect } from '@/app/lib/ragApiClient';
 
 // Use API proxy endpoint for client-side execution
 const RAG_API_PROXY = '/api/rag';
@@ -171,20 +170,31 @@ export async function saveInterviewData(userId: string, interviewData: string): 
   const workspaceName = `${userId}_user_key_preferences`;
   
   try {
-    // Use RAG MCP server to save interview data
-    await callRagServer('lightrag_add_documents', {
-      documents: [{
-        content: interviewData,
-        metadata: {
-          source: 'initial_interview',
-          userId: userId,
-          timestamp: new Date().toISOString(),
+    // Use RAG REST API proxy to save interview data
+    const response = await fetch('/api/rag-rest', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        endpoint: '/documents/text',
+        method: 'POST',
+        data: {
+          text: interviewData,
+          file_source: 'initial_interview',
+          workspace: workspaceName,
         }
-      }],
-      workspace: workspaceName,
+      }),
+      signal: AbortSignal.timeout(30000),
     });
-    
-    console.log(`[Interview] Saved interview data for user ${userId}`);
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`RAG API error: ${response.status} - ${errorData.error || 'Unknown error'}`);
+    }
+
+    const result = await response.json();
+    console.log(`[Interview] Saved interview data for user ${userId}:`, result);
   } catch (error: any) {
     console.error(`[Interview] Failed to save interview data:`, error);
     
