@@ -15,7 +15,12 @@ export async function POST(request: NextRequest) {
       method: body.method,
       toolName: body.params?.name,
       query: body.params?.arguments?.query?.substring(0, 50),
+      workspace: body.params?.arguments?.workspace,
+      mode: body.params?.arguments?.mode,
     });
+
+    // Log full request for debugging workspace issues
+    console.log('[RAG Proxy] Full request:', JSON.stringify(body, null, 2));
 
     // Forward the request to RAG MCP server
     const response = await fetch(RAG_SERVER_URL, {
@@ -54,7 +59,11 @@ export async function POST(request: NextRequest) {
       hasResult: !!data.result,
       hasError: !!data.error,
       contentLength: data.result?.content?.[0]?.text?.length,
+      contentPreview: data.result?.content?.[0]?.text?.substring(0, 100),
     });
+
+    // Log full response for debugging workspace issues
+    console.log('[RAG Proxy] Full response:', JSON.stringify(data, null, 2));
 
     return NextResponse.json(data);
   } catch (error: any) {
