@@ -44,10 +44,19 @@ You: "Работаю над встречей с Петром. Уже прове�
   },
 
   execute: async (input, details) => {
+    // Type guard to ensure input has the expected structure
+    if (!input || typeof input !== 'object' || !('sessionId' in input) || typeof input.sessionId !== 'string') {
+      return {
+        success: false,
+        error: 'Invalid input: sessionId is required and must be a string',
+        sessionId: 'unknown',
+      };
+    }
+
     console.log('[getTaskContextTool] Checking task context for session:', input.sessionId);
 
     // Access taskContextStore через extraContext
-    const getTaskContextFn = details?.context?.getTaskContext;
+    const getTaskContextFn = (details?.context as any)?.getTaskContext;
     
     if (!getTaskContextFn || typeof getTaskContextFn !== 'function') {
       console.error('[getTaskContextTool] getTaskContext function not available in context');
