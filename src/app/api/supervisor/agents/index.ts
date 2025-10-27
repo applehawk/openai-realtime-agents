@@ -14,7 +14,7 @@
 export { decisionAgent } from './decision';
 export { executorAgent } from './executor';
 export { complexityAssessorAgent } from './complexityAssessor';
-export { delegationReviewerAgent } from './delegationReviewer';
+export { complexityAssessorAgent2 } from './complexityAssessor2'; // v3.2: Enhanced with delegation
 export { taskPlannerAgent } from './taskPlanner';
 export { workflowOrchestratorAgent } from './workflowOrchestrator';
 export { reportGeneratorAgent } from './reportGenerator';

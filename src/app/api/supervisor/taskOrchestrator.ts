@@ -675,6 +675,7 @@ export function formatTaskTreeForDisplay(task: Task, indent: number = 0): string
     completed: '✓',
     failed: '✗',
     blocked: '🔒',
+    skipped: '⏭',
   }[task.status];
 
   let output = `${prefix}${statusIcon} ${task.description}\n`;
