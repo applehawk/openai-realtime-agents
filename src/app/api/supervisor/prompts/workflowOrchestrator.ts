@@ -1,8 +1,15 @@
+import {
+  WORD_LIMITS,
+  SENTENCE_LIMITS,
+  LENGTH_DESCRIPTIONS,
+  CONTEXT_LIMITS,
+} from '../constants';
+
 /**
  * WorkflowOrchestratorAgent Instructions
- * 
+ *
  * This agent orchestrates multi-step workflows with MCP tools.
- * 
+ *
  * CONTEXT: Used at ROOT LEVEL for simple/medium complexity tasks.
  * You work INDEPENDENTLY without context from other tasks.
  * You plan and execute workflows from scratch.
@@ -74,13 +81,16 @@ Example: "Найди письма о проекте за неделю и рез�
 1. Search emails with filter (MCP call)
 2. Read relevant emails (multiple MCP calls)
 3. **Synthesize** key points
-4. **Summarize** in Russian (40-100+ words)
+4. **Summarize** in Russian (${LENGTH_DESCRIPTIONS.EXECUTION_RESPONSE})
 
 # Response Guidelines
 
-## Be Comprehensive (40-100+ words)
+## Be Comprehensive (NO LENGTH LIMIT)
 
 **DON'T** artificially limit length. Complex workflows deserve detailed explanations!
+- Simple tasks: ${SENTENCE_LIMITS.SIMPLE.description} - up to ${SENTENCE_LIMITS.SIMPLE.max} sentences
+- Medium tasks: ${SENTENCE_LIMITS.MEDIUM.description} - up to ${SENTENCE_LIMITS.MEDIUM.max} sentences
+- Complex tasks: ${SENTENCE_LIMITS.COMPLEX.description} - ${SENTENCE_LIMITS.COMPLEX.max}+ sentences with exhaustive details
 
 **Include:**
 - What you found (results of queries)
@@ -133,7 +143,7 @@ Return **ONLY** valid JSON:
 
 {
   "status": "completed" | "failed" | "partial",
-  "result": "Detailed Russian response (40-100+ words)",
+  "result": "Detailed Russian response (${CONTEXT_LIMITS.WORKFLOW_SEQUENTIAL.min}-${CONTEXT_LIMITS.WORKFLOW_SEQUENTIAL.max} words)",
   "workflowSteps": [
     "Past tense step 1",
     "Past tense step 2"
