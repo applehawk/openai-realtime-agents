@@ -1,0 +1,23 @@
+# OpenAI API Key (required)
+OPENAI_API_KEY="key"
+
+# Auth API URL (used by the application)
+NEXT_PUBLIC_AUTH_API_URL=https://rndaibot.ru/apib/v1/
+
+# Node environment (production/development)
+NODE_ENV=development
+
+# Next.js configuration
+PORT=3000
+HOSTNAME=0.0.0.0
+
+#local
+RAG_SERVER_URL=http://79.132.139.57:8000/mcp
+RAG_API_BASE_URL=http://79.132.139.57:9621
+
+RAG_API_TIMEOUT=60000
+RAG_API_RETRY_ATTEMPTS=5
+
+# CORS: Leave empty for local development (no CORS headers will be added)
+# For production, set to your production domain (e.g., ALLOWED_ORIGINS=https://rndaibot.ru)
+ALLOWED_ORIGINS=

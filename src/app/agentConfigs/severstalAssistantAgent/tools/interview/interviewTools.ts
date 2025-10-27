@@ -1,15 +1,48 @@
 import { tool } from '@openai/agents/realtime';
-import { callRagApiDirect } from '@/app/lib/ragApiClient';
+
+// Use API proxy endpoint for client-side execution
+const RAG_REST_PROXY = '/api/rag-rest';
 
 /**
- * Create user workspace for interview data
+ * Helper function to call RAG REST API via proxy
+ * This is for client-side (browser) execution in realtime tools
+ */
+async function callRagApi(endpoint: string, method: string, data?: any) {
+  try {
+    console.log(`[RAG REST] Calling ${method} ${endpoint}`, data ? { dataKeys: Object.keys(data) } : {});
+
+    const response = await fetch(RAG_REST_PROXY, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ endpoint, method, data }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log(`[RAG REST] Success:`, { endpoint, hasData: !!result });
+    return result;
+  } catch (error: any) {
+    console.error(`[RAG REST] Error:`, error);
+    throw new Error(`RAG API connection failed: ${error.message}`);
+  }
+}
+
+/**
+ * Create user workspace for interview data with fallback handling
  */
 export async function createUserWorkspace(userId: string): Promise<void> {
   const workspaceName = `${userId}_user_key_preferences`;
   
   try {
     // Check if workspace exists first
-    const workspacesResponse = await callRagApiDirect('/workspaces', 'GET');
+    const workspacesResponse = await callRagApi('/workspaces', 'GET');
     
     // Handle different response structures
     let workspaces = [];
@@ -30,22 +63,31 @@ export async function createUserWorkspace(userId: string): Promise<void> {
     }
 
     // Create new workspace
-    await callRagApiDirect('/workspaces', 'POST', { name: workspaceName });
+    await callRagApi('/workspaces', 'POST', { name: workspaceName });
     console.log(`[Interview] Created workspace: ${workspaceName}`);
   } catch (error: any) {
     console.error(`[Interview] Failed to create workspace:`, error);
+    
+    // Check if it's a connectivity issue
+    if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
+      console.error(`[Interview] RAG server appears to be down. Interview data will not be saved.`);
+      console.error(`[Interview] Please check if RAG server is running on port 9621`);
+      // Don't throw error - allow interview to continue without saving
+      return;
+    }
+    
     throw new Error(`Не удалось создать рабочее пространство: ${error.message}`);
   }
 }
 
 /**
- * Save interview data to RAG
+ * Save interview data to RAG with fallback handling
  */
 export async function saveInterviewData(userId: string, interviewData: string): Promise<void> {
   const workspaceName = `${userId}_user_key_preferences`;
   
   try {
-    await callRagApiDirect('/documents/text', 'POST', {
+    await callRagApi('/documents/text', 'POST', {
       text: interviewData,
       file_source: 'initial_interview',
       workspace: workspaceName,
@@ -53,6 +95,15 @@ export async function saveInterviewData(userId: string, interviewData: string): 
     console.log(`[Interview] Saved interview data for user ${userId}`);
   } catch (error: any) {
     console.error(`[Interview] Failed to save interview data:`, error);
+    
+    // Check if it's a connectivity issue
+    if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
+      console.error(`[Interview] RAG server appears to be down. Interview data will not be saved.`);
+      console.error(`[Interview] Please check if RAG server is running on port 9621`);
+      // Don't throw error - allow interview to continue without saving
+      return;
+    }
+    
     throw new Error(`Не удалось сохранить данные интервью: ${error.message}`);
   }
 }
@@ -149,8 +200,7 @@ export const conductInitialInterview = tool({
     
     if (allFieldsFilled) {
       // Save interview data to RAG via API
-      try {
-        const interviewSummary = `
+      const interviewSummary = `
 ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ: ${userId}
 Должность: ${userPosition}
 Дата интервью: ${new Date().toISOString()}
@@ -175,11 +225,9 @@ ${updatedState.careerGoals || 'Не указано'}
 
 ПОДХОД К РЕШЕНИЮ ЗАДАЧ:
 ${updatedState.problemSolvingApproach || 'Не указано'}
-        `.trim();
-        
-        // Save interview data directly to RAG
-        const workspaceName = `${userId}_user_key_preferences`;
-        
+      `.trim();
+      
+      try {
         // Create workspace if it doesn't exist
         await createUserWorkspace(userId);
         
@@ -194,6 +242,7 @@ ${updatedState.problemSolvingApproach || 'Не указано'}
         };
       } catch (error: any) {
         console.error('[Interview] Error saving data:', error);
+        
         return {
           status: 'error',
           message: `Интервью завершено, но возникла ошибка при сохранении данных: ${error.message}`,
@@ -323,7 +372,7 @@ export const validateInterviewAnswer = tool({
     console.log(`[Interview] Validating answer for question ${questionNumber} via backend API`);
     
     try {
-      // Call backend API for validation instead of direct OpenAI call
+      // Call backend API for validation
       const response = await fetch('/api/validate-answer', {
         method: 'POST',
         headers: {
@@ -403,7 +452,7 @@ export const startInitialInterview = tool({
         { key: 'подход к решению', questionNumber: 7, patterns: ['подход', 'решен', 'задач'] },
       ];
       
-      const response = await callRagApiDirect('/query', 'POST', {
+      const response = await callRagApi('/query', 'POST', {
         query: `полный профиль пользователя ${userId} со всеми разделами: компетенции, стиль общения, предпочтения для встреч, фокусная работа, стиль работы, карьерные цели, подход к решению задач`,
         mode: 'local',
         top_k: 5,

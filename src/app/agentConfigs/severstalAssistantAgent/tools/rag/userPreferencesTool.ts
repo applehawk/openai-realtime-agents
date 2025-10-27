@@ -1,4 +1,5 @@
 import { tool } from '@openai/agents/realtime';
+import { callRagApiDirect } from '@/app/lib/ragApiClient';
 
 // Use API proxy endpoint for client-side execution
 const RAG_API_PROXY = '/api/rag';
@@ -58,9 +59,6 @@ async function callRagServerForPreferences(query: string, workspace: string) {
  */
 async function updatePreferencesInRag(userId: string, category: string, newValue: string, workspaceName: string) {
   try {
-    // Call RAG API to add/update document with new preference
-    const RAG_API_BASE_URL = process.env.RAG_API_BASE_URL || 'http://79.132.139.57:9621';
-    
     const preferenceText = `
 ОБНОВЛЕНИЕ ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ: ${userId}
 Дата обновления: ${new Date().toISOString()}
@@ -70,27 +68,26 @@ ${category.toUpperCase()}:
 ${newValue}
     `.trim();
     
-    const response = await fetch(`${RAG_API_BASE_URL}/documents/text`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: preferenceText,
-        file_source: `preference_update_${category}`,
-        workspace: workspaceName,
-      }),
-      signal: AbortSignal.timeout(30000),
+    // Use callRagApiDirect for server-side execution (same as interviewTools)
+    await callRagApiDirect('/documents/text', 'POST', {
+      text: preferenceText,
+      file_source: `preference_update_${category}`,
+      workspace: workspaceName,
     });
-
-    if (!response.ok) {
-      throw new Error(`RAG API error: ${response.status}`);
-    }
 
     console.log(`[UserPreferences] Updated ${category} for user ${userId}`);
     return true;
   } catch (error: any) {
     console.error(`[UserPreferences] Error updating:`, error);
+    
+    // Check if it's a connectivity issue (graceful degradation like in interviewTools)
+    if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
+      console.error(`[UserPreferences] RAG server appears to be down. Preferences will not be saved.`);
+      console.error(`[UserPreferences] Please check if RAG server is running on port 9621`);
+      // Don't throw error - allow operation to continue
+      return false;
+    }
+    
     throw new Error(`Ошибка обновления предпочтений: ${error.message}`);
   }
 }
