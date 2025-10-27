@@ -31,6 +31,13 @@ export async function callRagApiDirect(endpoint: string, method: string, data?: 
     return result;
   } catch (error: any) {
     console.error(`[RAG API] Network error:`, error);
+    
+    // Check if it's a network connectivity issue
+    if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
+      console.error(`[RAG API] Server appears to be down at ${RAG_API_BASE_URL}`);
+      console.error(`[RAG API] Please check if RAG server is running on port 9621`);
+    }
+    
     throw new Error(`RAG API connection failed: ${error.message}`);
   }
 }
