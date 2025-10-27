@@ -174,7 +174,7 @@ export const conductInitialInterview = tool({
     
     // Determine next question or completion
     const questionNumber = parseInt(currentQuestion);
-    const isComplete = questionNumber >= 4; // Minimum required questions
+    const isComplete = questionNumber >= 7; // ALL questions are required
     
     if (isComplete) {
       // Save interview data to RAG via API
@@ -233,6 +233,9 @@ ${updatedState.problemSolvingApproach || 'Не указано'}
     } else {
       // Continue with next question
       const nextQuestionNumber = questionNumber + 1;
+      
+      console.log(`[Interview] Current question: ${currentQuestion}, Next: ${nextQuestionNumber}`);
+      
       const questions = [
         {
           id: '1',
@@ -266,11 +269,23 @@ ${updatedState.problemSolvingApproach || 'Не указано'}
       
       const nextQuestion = questions.find(q => q.id === nextQuestionNumber.toString());
       
+      console.log(`[Interview] Next question found: ${!!nextQuestion}, Text: ${nextQuestion?.text?.substring(0, 50)}`);
+      
+      if (!nextQuestion) {
+        console.error(`[Interview] ERROR: Question ${nextQuestionNumber} not found! This should never happen!`);
+      }
+      
+      const remainingQuestions = 7 - nextQuestionNumber + 1;
+      
       return {
         status: 'in_progress',
-        message: nextQuestion?.text || 'Интервью завершено',
+        message: `СЛЕДУЮЩИЙ ВОПРОС (${nextQuestionNumber}/7, осталось ${remainingQuestions}): ${nextQuestion?.text || `ОШИБКА: вопрос ${nextQuestionNumber} не найден`}`,
         nextQuestion: nextQuestion?.text || null,
+        currentQuestionNumber: nextQuestionNumber,
+        totalQuestions: 7,
+        questionsRemaining: remainingQuestions,
         interviewState: updatedState,
+        instruction: `ВАЖНО: Задай пользователю nextQuestion. Интервью НЕ ЗАВЕРШЕНО, осталось ${remainingQuestions} вопросов!`,
       };
     }
   },
@@ -300,35 +315,66 @@ export const startInitialInterview = tool({
   execute: async (input: any) => {
     const { userId, userPosition } = input;
     
-    // Check if interview already exists by querying RAG directly
+    // Check if interview already exists AND is complete by querying RAG directly
     try {
       const workspaceName = `${userId}_user_key_preferences`;
       
+      // Check all required fields
+      const requiredFields = [
+        'компетенции',
+        'стиль общения',
+        'предпочтения для встреч',
+        'фокусная работа',
+        'стиль работы',
+        'карьерные цели',
+        'подход к решению задач'
+      ];
+      
       const response = await callRagApiDirect('/query', 'POST', {
-        query: `интервью пользователя ${userId}`,
+        query: `полный профиль пользователя ${userId} со всеми разделами: компетенции, стиль общения, предпочтения для встреч, фокусная работа, стиль работы, карьерные цели, подход к решению задач`,
         mode: 'local',
-        top_k: 1,
+        top_k: 5,
         workspace: workspaceName,
       });
       
       if (response && response.response && 
           !response.response.includes('не располагаю достаточной информацией') &&
           !response.response.includes('No relevant context found') &&
-          !response.response.includes('не найдено') &&
-          response.response.length > 50) {
-        return {
-          status: 'already_completed',
-          message: 'ok', // Интервью уже пройдено - просто молча продолжаем работу
-        };
+          !response.response.includes('не найдено')) {
+        
+        // Check if ALL required fields are present
+        const responseText = response.response.toLowerCase();
+        const missingFields = requiredFields.filter(field => 
+          !responseText.includes(field.toLowerCase())
+        );
+        
+        const notSpecifiedCount = (responseText.match(/не указано/gi) || []).length;
+        const minProfileLength = 300;
+        const isLongEnough = response.response.length >= minProfileLength;
+        
+        console.log(`[Interview] startInitialInterview check for user ${userId}`);
+        console.log(`[Interview] Missing fields: ${missingFields.length}, NotSpecified: ${notSpecifiedCount}, Length: ${response.response.length}`);
+        
+        if (missingFields.length === 0 && notSpecifiedCount < requiredFields.length && isLongEnough) {
+          // Interview is complete with all fields
+          console.log(`[Interview] ✅ Interview already complete for user ${userId}`);
+          return {
+            status: 'already_completed',
+            message: 'ok', // Интервью уже пройдено полностью - молча продолжаем работу
+          };
+        } else {
+          // Interview exists but incomplete - continue from where we left off
+          console.log(`[Interview] ❌ Incomplete interview for user ${userId}. Will complete missing fields.`);
+        }
       }
     } catch (error) {
       console.log('[Interview] Could not check status, proceeding with interview');
     }
     
     // Start first question
-    const firstQuestion = `Привет! Я ваш персональный ассистент. Чтобы лучше вам помогать, давайте проведем короткое интервью - всего 3-5 минут.
+    const firstQuestion = `Привет! Я ваш персональный ассистент. Чтобы лучше вам помогать, давайте проведем короткое интервью - всего несколько минут.
 
-Расскажите, пожалуйста, какую должность вы занимаете и в каких областях вы считаете себя экспертом? Это поможет мне лучше понимать ваши задачи и предлагать более релевантную помощь.`;
+Первый вопрос: вы работаете как ${userPosition}. Расскажите, в каких областях вы считаете себя экспертом? Это поможет мне лучше понимать ваши задачи.`;
     
     return {
       status: 'started',
@@ -348,11 +394,12 @@ export const startInitialInterview = tool({
 });
 
 /**
- * Tool for checking if user has completed initial interview
+ * Tool for checking if user has completed initial interview with ALL fields filled
+ * DEPRECATED: Use queryUserPreferences instead
  */
-export const checkInterviewStatus = tool({
-  name: 'checkInterviewStatus',
-  description: 'Проверить статус первичного интервью пользователя и получить сохраненные предпочтения',
+const _deprecatedCheckInterviewStatus = tool({
+  name: '_deprecated_checkInterviewStatus',
+  description: 'DEPRECATED: Use queryUserPreferences instead',
   parameters: {
     type: 'object',
     properties: {
@@ -371,30 +418,189 @@ export const checkInterviewStatus = tool({
       // Проверяем наличие данных интервью в workspace пользователя
       const workspaceName = `${userId}_user_key_preferences`;
       
-      const response = await callRagApiDirect('/query', 'POST', {
-        query: `интервью пользователя ${userId}`,
-        mode: 'local',
-        top_k: 1,
-        workspace: workspaceName,
+      console.log(`\n========================================`);
+      console.log(`[Interview] Checking interview status for user: ${userId}`);
+      console.log(`[Interview] Workspace: ${workspaceName}`);
+      console.log(`========================================\n`);
+      
+      // Запрашиваем ПОЛНЫЙ профиль пользователя через API proxy (работает на клиенте)
+      const ragResponse = await fetch('/api/rag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: Date.now(),
+          method: 'tools/call',
+          params: {
+            name: 'lightrag_query',
+            arguments: {
+              query: `покажи весь профиль пользователя ${userId} включая все разделы: компетенции, стиль общения, предпочтения встреч, фокусную работу, стиль работы, карьерные цели, подход к решению задач`,
+              mode: 'local',
+              top_k: 10,
+              workspace: workspaceName,
+              include_references: true,
+            },
+          },
+        }),
+        signal: AbortSignal.timeout(30000),
       });
       
-      if (response && response.response && 
-          !response.response.includes('не располагаю достаточной информацией') &&
-          !response.response.includes('No relevant context found') &&
-          !response.response.includes('не найдено') &&
-          response.response.length > 50) {
+      if (!ragResponse.ok) {
+        console.error(`[Interview] RAG API returned status ${ragResponse.status}`);
         return {
-          hasInterview: true,
-          message: 'ok', // Интервью пройдено - просто молча продолжаем работу
+          hasInterview: false,
+          message: 'Не удалось проверить статус интервью. Попробуйте позже.',
         };
       }
       
+      const ragData = await ragResponse.json();
+      
+      if (ragData.error) {
+        console.error(`[Interview] RAG API error:`, ragData.error);
+        return {
+          hasInterview: false,
+          message: 'Ошибка при проверке статуса интервью.',
+        };
+      }
+      
+      // Extract response text from MCP format
+      let responseText = '';
+      if (ragData.result?.content?.[0]?.text) {
+        // Try to parse if it's JSON
+        try {
+          const parsed = JSON.parse(ragData.result.content[0].text);
+          responseText = parsed.response || ragData.result.content[0].text;
+        } catch {
+          responseText = ragData.result.content[0].text;
+        }
+      } else {
+        responseText = JSON.stringify(ragData.result || ragData);
+      }
+      
+      const response = { response: responseText };
+      
+      console.log(`[Interview] RAG Response received:`);
+      console.log(`[Interview] Response exists: ${!!response}`);
+      console.log(`[Interview] Response.response exists: ${!!response?.response}`);
+      
+      if (response && response.response) {
+        console.log(`\n========================================`);
+        console.log(`[Interview] FULL PROFILE CONTENT:`);
+        console.log(`========================================`);
+        console.log(response.response);
+        console.log(`========================================`);
+        console.log(`[Interview] Profile length: ${response.response.length} characters\n`);
+        
+        // Проверяем на признаки отсутствия данных
+        const hasNoData = 
+          response.response.includes('не располагаю достаточной информацией') ||
+          response.response.includes('No relevant context found') ||
+          response.response.includes('не найдено');
+        
+        if (hasNoData) {
+          console.log(`[Interview] ❌ RAG returned "no data" response`);
+          return {
+            hasInterview: false,
+            message: 'Интервью не проводилось. Требуется делегировать Interview Agent.',
+          };
+        }
+        
+        // Проверяем каждое обязательное поле
+        const responseText = response.response.toLowerCase();
+        const fieldChecks = {
+          'компетенции': responseText.includes('компетенци'),
+          'стиль общения': responseText.includes('стиль') && responseText.includes('общени'),
+          'предпочтения для встреч': responseText.includes('встреч') || responseText.includes('предпочтен'),
+          'фокусная работа': responseText.includes('фокус'),
+          'стиль работы': responseText.includes('работ'),
+          'карьерные цели': responseText.includes('карьер') || responseText.includes('цел'),
+          'подход к решению': responseText.includes('подход') || responseText.includes('решен'),
+        };
+        
+        console.log(`[Interview] Field presence check:`);
+        Object.entries(fieldChecks).forEach(([field, present]) => {
+          console.log(`  ${present ? '✅' : '❌'} ${field}: ${present ? 'FOUND' : 'MISSING'}`);
+        });
+        
+        const missingFields = Object.entries(fieldChecks)
+          .filter(([_, present]) => !present)
+          .map(([field, _]) => field);
+        
+        const notSpecifiedCount = (response.response.match(/не указано/gi) || []).length;
+        const minProfileLength = 300;
+        const isLongEnough = response.response.length >= minProfileLength;
+        
+        console.log(`\n[Interview] Completeness check:`);
+        console.log(`  Missing fields: ${missingFields.length} - [${missingFields.join(', ')}]`);
+        console.log(`  "Не указано" count: ${notSpecifiedCount}/7`);
+        console.log(`  Length: ${response.response.length} >= ${minProfileLength} = ${isLongEnough ? '✅' : '❌'}`);
+        
+        const isComplete = missingFields.length === 0 && notSpecifiedCount < 7 && isLongEnough;
+        
+        // Создаём детальный отчёт для отладки
+        const debugInfo = {
+          profileLength: response.response.length,
+          missingFieldsCount: missingFields.length,
+          missingFieldsList: missingFields,
+          notSpecifiedCount: notSpecifiedCount,
+          isLongEnough: isLongEnough,
+          profilePreview: response.response.substring(0, 200) + '...',
+        };
+        
+        console.log(`\n[Interview] Debug info:`, JSON.stringify(debugInfo, null, 2));
+        
+        if (isComplete) {
+          console.log(`\n[Interview] ✅✅✅ INTERVIEW COMPLETE ✅✅✅\n`);
+          
+          // Parse structured data from profile
+          const profileText = response.response;
+          const extractField = (fieldName: string): string => {
+            const regex = new RegExp(`${fieldName}[:\\s]+(.*?)(?=\\n[А-ЯЁ]+:|$)`, 'is');
+            const match = profileText.match(regex);
+            return match ? match[1].trim() : 'Не указано';
+          };
+          
+          const result = {
+            hasInterview: true,
+            message: 'ok',
+            profile: {
+              userId: userId,
+              competencies: extractField('КОМПЕТЕНЦИИ И ЭКСПЕРТИЗА'),
+              communicationStyle: extractField('СТИЛЬ ОБЩЕНИЯ'),
+              meetingPreferences: extractField('ПРЕДПОЧТЕНИЯ ДЛЯ ВСТРЕЧ'),
+              focusTime: extractField('РЕЖИМ ФОКУСНОЙ РАБОТЫ'),
+              workStyle: extractField('СТИЛЬ РАБОТЫ'),
+              careerGoals: extractField('КАРЬЕРНЫЕ ЦЕЛИ'),
+              problemSolvingApproach: extractField('ПОДХОД К РЕШЕНИЮ ЗАДАЧ'),
+            },
+            profileLength: response.response.length,
+            completeness: {
+              missingFields: 0,
+              notSpecifiedCount: notSpecifiedCount,
+            },
+          };
+          
+          console.log(`[Interview] RETURNING STRUCTURED RESULT:`, JSON.stringify(result, null, 2));
+          return result;
+        } else {
+          console.log(`\n[Interview] ❌❌❌ INTERVIEW INCOMPLETE ❌❌❌`);
+          console.log(`[Interview] User needs to complete interview\n`);
+          return {
+            hasInterview: false,
+            message: `DEBUG: len=${response.response.length}/300, missing=${missingFields.length} [${missingFields.slice(0,3).join(',')}], notSpec=${notSpecifiedCount}/7`,
+            missingFields,
+            profileData: response.response,
+          };
+        }
+      }
+      
+      console.log(`[Interview] ❌ No valid response from RAG\n`);
       return {
         hasInterview: false,
         message: 'Интервью не проводилось. Требуется делегировать Interview Agent.',
       };
     } catch (error: any) {
-      console.error('[Interview] Error checking status:', error);
+      console.error('[Interview] ❌ ERROR checking status:', error);
       return {
         hasInterview: false,
         message: `Ошибка при проверке статуса интервью: ${error.message}`,

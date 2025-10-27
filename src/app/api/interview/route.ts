@@ -11,7 +11,7 @@ const RAG_API_RETRY_ATTEMPTS = parseInt(process.env.RAG_API_RETRY_ATTEMPTS || '3
 /**
  * Helper function to call RAG API directly
  */
-async function callRagApiDirect(endpoint: string, method: string, data?: any) {
+export async function callRagApiDirect(endpoint: string, method: string, data?: any) {
   try {
     const url = `${RAG_API_BASE_URL}${endpoint}`;
     console.log(`[RAG API] Calling ${method} ${url}`, data ? { dataKeys: Object.keys(data) } : {});
