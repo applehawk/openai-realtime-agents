@@ -110,7 +110,7 @@ export const conductInitialInterview = tool({
         const englishPreferences = convertPreferencesToEnglish({
           'компетенции': updatedState.competencies || '',
           'стиль общения': updatedState.communicationStyle || '',
-          'предпочтения для встреч': updatedState.meetingPreferences || '',
+          'предпочтения по встречам': updatedState.meetingPreferences || '',
           'фокусная работа': updatedState.focusTime || '',
           'стиль работы': updatedState.workStyle || '',
           'карьерные цели': updatedState.careerGoals || '',
@@ -361,7 +361,7 @@ export const manageUserInterview = tool({
       const preferenceCategories = [
         { key: 'компетенции', questionNumber: 1 },
         { key: 'стиль общения', questionNumber: 2 },
-        { key: 'предпочтения для встреч', questionNumber: 3 },
+        { key: 'предпочтения по встречам', questionNumber: 3 },
         { key: 'фокусная работа', questionNumber: 4 },
         { key: 'стиль работы', questionNumber: 5 },
         { key: 'карьерные цели', questionNumber: 6 },

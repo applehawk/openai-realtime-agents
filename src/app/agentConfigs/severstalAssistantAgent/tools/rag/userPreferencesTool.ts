@@ -72,7 +72,7 @@ export const queryUserPreferences = tool({
       } else if (queryLower.includes('стиль') && queryLower.includes('общения')) {
         response = russianPreferences['стиль общения'] || 'Не указано';
       } else if (queryLower.includes('встреч') || queryLower.includes('встречи')) {
-        response = russianPreferences['предпочтения для встреч'] || 'Не указано';
+        response = russianPreferences['предпочтения по встречам'] || 'Не указано';
       } else if (queryLower.includes('фокус') || queryLower.includes('концентрация')) {
         response = russianPreferences['фокусная работа'] || 'Не указано';
       } else if (queryLower.includes('рабочий') && queryLower.includes('стиль')) {
