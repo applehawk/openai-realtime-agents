@@ -1,112 +1,10 @@
 import { tool } from '@openai/agents/realtime';
-import { callRagApiDirect } from '@/app/lib/ragApiClient';
-
-// Use API proxy endpoint for client-side execution
-const RAG_API_PROXY = '/api/rag';
-
-/**
- * Helper function to call RAG MCP server via JSON-RPC through API proxy
- */
-async function callRagServerForPreferences(query: string, workspace: string) {
-  try {
-    console.log(`[UserPreferences] Querying workspace: ${workspace}`);
-    console.log(`[UserPreferences] Query: ${query}`);
-
-    const requestBody = {
-      jsonrpc: '2.0',
-      id: Date.now(),
-      method: 'tools/call',
-      params: {
-        name: 'lightrag_query',
-        arguments: {
-          query,
-          mode: 'local',
-          top_k: 3,
-          workspace,
-          include_references: true,
-        },
-      },
-    };
-
-    console.log(`[UserPreferences] Request body:`, JSON.stringify(requestBody, null, 2));
-
-    const response = await fetch(RAG_API_PROXY, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(30000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`RAG server returned status ${response.status}`);
-    }
-
-    const data = await response.json();
-    
-    console.log(`[UserPreferences] Response received:`, {
-      hasResult: !!data.result,
-      hasError: !!data.error,
-      contentLength: data.result?.content?.[0]?.text?.length,
-    });
-
-    if (data.error) {
-      console.error(`[UserPreferences] RAG server error:`, data.error);
-      throw new Error(`RAG server error: ${data.error.message || JSON.stringify(data.error)}`);
-    }
-
-    // Extract text content from MCP response format
-    if (data.result?.content?.[0]?.text) {
-      const result = data.result.content[0].text;
-      console.log(`[UserPreferences] Extracted text (first 200 chars):`, result.substring(0, 200));
-      return result;
-    }
-
-    const fallbackResult = JSON.stringify(data.result || data);
-    console.log(`[UserPreferences] Fallback result:`, fallbackResult.substring(0, 200));
-    return fallbackResult;
-  } catch (error: any) {
-    console.error(`[UserPreferences] Error:`, error);
-    throw new Error(`Ошибка подключения к базе знаний: ${error.message}`);
-  }
-}
-
-/**
- * Helper function to update user preferences in RAG
- */
-async function updatePreferencesInRag(userId: string, category: string, newValue: string, workspaceName: string) {
-  try {
-    const preferenceText = `
-ОБНОВЛЕНИЕ ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ: ${userId}
-Дата обновления: ${new Date().toISOString()}
-Категория: ${category}
-
-${category.toUpperCase()}:
-${newValue}
-    `.trim();
-    
-    // Use callRagApiDirect for server-side execution (same as interviewTools)
-    await callRagApiDirect('/documents/text', 'POST', {
-      text: preferenceText,
-      file_source: `preference_update_${category}`,
-      workspace: workspaceName,
-    });
-
-    console.log(`[UserPreferences] Updated ${category} for user ${userId}`);
-    return true;
-  } catch (error: any) {
-    console.error(`[UserPreferences] Error updating:`, error);
-    
-    // Check if it's a connectivity issue (graceful degradation like in interviewTools)
-    if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
-      console.error(`[UserPreferences] RAG server appears to be down. Preferences will not be saved.`);
-      console.error(`[UserPreferences] Please check if RAG server is running on port 9621`);
-      // Don't throw error - allow operation to continue
-      return false;
-    }
-    
-    throw new Error(`Ошибка обновления предпочтений: ${error.message}`);
-  }
-}
+import { 
+  getUserPreferences,
+  updatePreferenceField,
+  convertPreferencesToRussian,
+  FIELD_MAPPING 
+} from '@/app/lib/preferencesMcpClient';
 
 /**
  * Tool for querying user preferences from their personal workspace
@@ -143,27 +41,58 @@ export const queryUserPreferences = tool({
     const { userId, query } = input;
     
     try {
-      const workspaceName = `${userId}_user_key_preferences`;
-      const result = await callRagServerForPreferences(query, workspaceName);
+      console.log(`[UserPreferences] Querying preferences for user ${userId}: ${query}`);
       
-      // Try to parse JSON response
-      try {
-        const parsed = JSON.parse(result);
-        if (parsed.response) {
-          return {
-            success: true,
-            response: parsed.response,
-            workspace: workspaceName,
-          };
+      // Get user preferences from MCP server
+      const preferences = await getUserPreferences(userId);
+      
+      if (!preferences) {
+        return {
+          success: true,
+          response: 'Предпочтения пользователя не найдены. Пройдите интервью для настройки персонализации.',
+          workspace: `${userId}_user_key_preferences`,
+        };
+      }
+      
+      // Convert to Russian field names for display
+      const russianPreferences = convertPreferencesToRussian(preferences);
+      
+      // Simple query matching for specific fields
+      const queryLower = query.toLowerCase();
+      let response = '';
+      
+      if (queryLower.includes('все') || queryLower.includes('полный') || queryLower.includes('профиль')) {
+        // Return all preferences
+        response = `Профиль пользователя ${userId}:\n\n`;
+        for (const [field, value] of Object.entries(russianPreferences)) {
+          response += `${field}: ${value}\n`;
         }
-      } catch {
-        // Not JSON, return as is
+      } else if (queryLower.includes('компетенции') || queryLower.includes('эксперт')) {
+        response = russianPreferences['компетенции'] || 'Не указано';
+      } else if (queryLower.includes('стиль') && queryLower.includes('общения')) {
+        response = russianPreferences['стиль общения'] || 'Не указано';
+      } else if (queryLower.includes('встреч') || queryLower.includes('встречи')) {
+        response = russianPreferences['предпочтения для встреч'] || 'Не указано';
+      } else if (queryLower.includes('фокус') || queryLower.includes('концентрация')) {
+        response = russianPreferences['фокусная работа'] || 'Не указано';
+      } else if (queryLower.includes('рабочий') && queryLower.includes('стиль')) {
+        response = russianPreferences['стиль работы'] || 'Не указано';
+      } else if (queryLower.includes('карьер') || queryLower.includes('цели')) {
+        response = russianPreferences['карьерные цели'] || 'Не указано';
+      } else if (queryLower.includes('решение') || queryLower.includes('задач')) {
+        response = russianPreferences['подход к решению'] || 'Не указано';
+      } else {
+        // Default: return all preferences
+        response = `Профиль пользователя ${userId}:\n\n`;
+        for (const [field, value] of Object.entries(russianPreferences)) {
+          response += `${field}: ${value}\n`;
+        }
       }
       
       return {
         success: true,
-        response: result || 'Данные не найдены',
-        workspace: workspaceName,
+        response: response || 'Данные не найдены',
+        workspace: `${userId}_user_key_preferences`,
       };
     } catch (error: any) {
       console.error('[UserPreferences] Error querying preferences:', error);
@@ -229,18 +158,27 @@ export const updateUserPreferences = tool({
     const { userId, category, newValue } = input;
     
     try {
-      const workspaceName = `${userId}_user_key_preferences`;
+      console.log(`[UserPreferences] Updating ${category} for user ${userId}: ${newValue}`);
       
-      // Update preferences in RAG
-      await updatePreferencesInRag(userId, category, newValue, workspaceName);
+      // Update specific preference field using MCP server
+      const success = await updatePreferenceField(userId, category, newValue);
       
-      return {
-        success: true,
-        message: `Предпочтения обновлены: ${category} → ${newValue}`,
-        category,
-        newValue,
-        workspace: workspaceName,
-      };
+      if (success) {
+        return {
+          success: true,
+          message: `Предпочтения обновлены: ${category} → ${newValue}`,
+          category,
+          newValue,
+          workspace: `${userId}_user_key_preferences`,
+        };
+      } else {
+        return {
+          success: false,
+          message: `Ошибка при обновлении предпочтений: ${category}`,
+          category,
+          workspace: `${userId}_user_key_preferences`,
+        };
+      }
     } catch (error: any) {
       console.error('[UserPreferences] Error updating preferences:', error);
       return {
