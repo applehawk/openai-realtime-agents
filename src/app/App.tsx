@@ -10,8 +10,6 @@ import BottomToolbar from "./components/BottomToolbar";
 import UserProfile from "./components/UserProfile";
 import SeverstalLogo from "./components/SeverstalLogo";
 import InterviewButton from "./components/InterviewButton";
-import RagStatusChecker from "./components/RagStatusChecker";
-import McpConnectionStatus from "./components/McpConnectionStatus";
 
 // Types
 import { SessionStatus } from "@/app/types";
@@ -115,8 +113,6 @@ function App() {
       return stored ? stored === 'true' : true;
     },
   );
-  const [isRagStatusVisible, setIsRagStatusVisible] = useState<boolean>(false);
-  const [isMcpStatusVisible, setIsMcpStatusVisible] = useState<boolean>(false);
 
   // Initialize the recording hook.
   const { startRecording, stopRecording, downloadRecording } =
@@ -423,41 +419,11 @@ function App() {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => setIsRagStatusVisible(!isRagStatusVisible)}
-            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-            title="Toggle RAG Status"
-          >
-            RAG Status
-          </button>
-          <button
-            onClick={() => setIsMcpStatusVisible(!isMcpStatusVisible)}
-            className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
-            title="Toggle MCP Status"
-          >
-            MCP Status
-          </button>
           <InterviewButton onStartInterview={handleStartInterview} />
           <UserProfile />
         </div>
       </div>
 
-      {isRagStatusVisible && (
-        <div className="px-5 pb-2">
-          <RagStatusChecker />
-        </div>
-      )}
-
-      {isMcpStatusVisible && (
-        <div className="px-5 pb-2">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
-              MCP Preferences Status
-            </h3>
-            <McpConnectionStatus />
-          </div>
-        </div>
-      )}
 
       <div className="flex flex-1 gap-2 px-2 overflow-hidden relative">
         <Transcript
@@ -489,8 +455,6 @@ function App() {
         onCodecChange={handleCodecChange}
       />
 
-      {/* Плавающий статус MCP в правом нижнем углу */}
-      <McpConnectionStatus />
     </div>
   );
 }
