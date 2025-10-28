@@ -9,6 +9,7 @@ import Events from "./components/Events";
 import BottomToolbar from "./components/BottomToolbar";
 import UserProfile from "./components/UserProfile";
 import SeverstalLogo from "./components/SeverstalLogo";
+import InterviewButton from "./components/InterviewButton";
 
 // Types
 import { SessionStatus } from "@/app/types";
@@ -18,22 +19,13 @@ import type { RealtimeAgent } from '@openai/agents/realtime';
 import { useTranscript } from "@/app/contexts/TranscriptContext";
 import { useEvent } from "@/app/contexts/EventContext";
 import { useRealtimeSession } from "./hooks/useRealtimeSession";
-import { createModerationGuardrail } from "@/app/agentConfigs/guardrails";
 
 // Agent configs
 import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
-import { customerServiceRetailScenario } from "@/app/agentConfigs/customerServiceRetail";
-import { chatSupervisorScenario } from "@/app/agentConfigs/chatSupervisor";
-import { customerServiceRetailCompanyName } from "@/app/agentConfigs/customerServiceRetail";
-import { chatSupervisorCompanyName } from "@/app/agentConfigs/chatSupervisor";
-import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff";
 import { chatSeverstalAssistantScenario } from "@/app/agentConfigs/severstalAssistantAgent";
 
 // Map used by connect logic for scenarios defined via the SDK.
 const sdkScenarioMap: Record<string, RealtimeAgent[]> = {
-  simpleHandoff: simpleHandoffScenario,
-  customerServiceRetail: customerServiceRetailScenario,
-  chatSupervisor: chatSupervisorScenario,
   chatSeverstalAssistant: chatSeverstalAssistantScenario,
 };
 
@@ -61,6 +53,8 @@ function App() {
   const {
     addTranscriptMessage,
     addTranscriptBreadcrumb,
+    addTaskProgressMessage,
+    updateTaskProgress,
   } = useTranscript();
   const { logClientEvent, logServerEvent } = useEvent();
 
@@ -184,7 +178,6 @@ function App() {
     logClientEvent({ url: "/session" }, "fetch_session_token_request");
 
     const tokenResponse = await fetch("/api/session");
-    console.log(tokenResponse)
     const data = await tokenResponse.json();
 
     logServerEvent(data, "fetch_session_token_response");
@@ -216,18 +209,21 @@ function App() {
           reorderedAgents.unshift(agent);
         }
 
-        const companyName = agentSetKey === 'customerServiceRetail'
-          ? customerServiceRetailCompanyName
-          : chatSupervisorCompanyName;
-        const guardrail = createModerationGuardrail(companyName);
-
         await connect({
           getEphemeralKey: async () => EPHEMERAL_KEY,
           initialAgents: reorderedAgents,
           audioElement: sdkAudioElement,
-          outputGuardrails: [guardrail],
+          outputGuardrails: [],
           extraContext: {
             addTranscriptBreadcrumb,
+            addTaskProgressMessage,
+            updateTaskProgress,
+            // Allow agents to access task context from IntelligentSupervisor
+            getTaskContext: async (sessionId: string) => {
+              // Import dynamically to avoid circular dependencies
+              const { taskContextStore } = await import('./api/supervisor/unified/taskContextStore');
+              return taskContextStore.getContext(sessionId);
+            },
           },
           model: "gpt-realtime",
         });
@@ -260,6 +256,11 @@ function App() {
     sendClientEvent({ type: 'response.create' }, '(simulated user text message)');
   };
 
+  const handleStartInterview = () => {
+    // Отправляем сообщение агенту для запуска интервью
+    sendSimulatedUserMessage("Проведи со мной первичное интервью для настройки предпочтений");
+  };
+
   const updateSession = (shouldTriggerResponse: boolean = false) => {
     // Reflect Push-to-Talk UI state by (de)activating server VAD on the
     // backend. The Realtime SDK supports live session updates via the
@@ -271,10 +272,10 @@ function App() {
       },
     });
 
-    // Send an initial 'hi' message to trigger the agent to greet the user
-    if (shouldTriggerResponse) {
-      sendSimulatedUserMessage('hi');
-    }
+      // Send an initial message to trigger the agent to get user info and check interview status
+      if (shouldTriggerResponse) {
+        sendSimulatedUserMessage('Привет! Сначала получи информацию о пользователе, затем проверь статус моего интервью и предложи помощь.');
+      }
     return;
   }
 
@@ -318,24 +319,6 @@ function App() {
       connectToRealtime();
     }
   };
-
-  // const _handleAgentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-  //   const newAgentConfig = e.target.value;
-  //   const url = new URL(window.location.toString());
-  //   url.searchParams.set("agentConfig", newAgentConfig);
-  //   window.location.replace(url.toString());
-  // };
-
-  // const _handleSelectedAgentChange = (
-  //   e: React.ChangeEvent<HTMLSelectElement>
-  // ) => {
-  //   const newAgentName = e.target.value;
-  //   // Reconnect session with the newly selected agent as root so that tool
-  //   // execution works correctly.
-  //   disconnectFromRealtime();
-  //   setSelectedAgentName(newAgentName);
-  //   // connectToRealtime will be triggered by effect watching selectedAgentName
-  // };
 
   // Because we need a new connection, refresh the page when codec changes
   const handleCodecChange = (newCodec: string) => {
@@ -424,8 +407,6 @@ function App() {
     };
   }, [sessionStatus]);
 
-  // const agentSetKey = searchParams.get("agentConfig") || "default";
-
   return (
     <div className="text-base flex flex-col h-screen bg-gray-100 text-gray-800 relative">
       <div className="p-5 text-lg font-semibold flex justify-between items-center">
@@ -438,9 +419,11 @@ function App() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <InterviewButton onStartInterview={handleStartInterview} />
           <UserProfile />
         </div>
       </div>
+
 
       <div className="flex flex-1 gap-2 px-2 overflow-hidden relative">
         <Transcript
@@ -471,6 +454,7 @@ function App() {
         codec={urlCodec}
         onCodecChange={handleCodecChange}
       />
+
     </div>
   );
 }

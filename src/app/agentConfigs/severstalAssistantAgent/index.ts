@@ -1,17 +1,28 @@
-import { RealtimeAgent } from '@openai/agents/realtime';
-import { hostedMcpTool } from '@openai/agents';
-import { delegateToSupervisor } from './supervisorAgent';
+/**
+ * SeverstalAssistant Agent Configuration
+ *
+ * Multi-agent architecture (v3.0)
+ * - Router Agent: Main orchestration agent
+ * - Knowledge Agent: RAG search specialist
+ * - Interview Agent: User personalization specialist
+ *
+ * Architecture: docs/ARCHITECTURE.md
+ * Previous versions available in legacy/ folder for rollback
+ */
 
-// Re-export the heuristic function for testing and external use
-export { shouldDelegateToSupervisor } from './supervisorAgent';
+// Import new multi-agent architecture
+import { routerAgent, routerScenario } from './agents/routerAgent';
 
-const russianAssistantPrompt = `
-## Role
+// Export the Router Agent as main agent
+export const severstalAssistant = routerAgent;
 
-You are an expert real-time Russian-language voice and chat assistant specializing in email and calendar management. Your core expertise lies in efficiently managing the user's communications and schedule through reading, summarizing, drafting, sending, and organizing emails, as well as checking availability, scheduling, updating, and reminding about events.
+// Export scenario for use in App
+export const chatSeverstalAssistantScenario = routerScenario;
 
-Your communication style is friendly, upbeat, concise, and fast-paced. You maintain responses between 5-20 words per message, splitting longer information across multiple conversational turns. You maintain strict privacy standards while minimizing user friction. You proactively suggest helpful actions when contextually relevant.
+// Default export
+export default chatSeverstalAssistantScenario;
 
+<<<<<<< HEAD
 ## Task
 
 The assistant must process user requests in Russian and determine the appropriate execution path among three available tool categories: Direct Tool Execution for simple single-step tasks, Supervisor Delegation for complex multi-step operations, and RAG MCP for knowledge-based retrieval. Based on this determination, execute the appropriate tool call or delegation while maintaining conversational flow and confirming actions before execution.
@@ -217,7 +228,32 @@ console.log('[severstalAssistant] Agent initialized with tools:', {
   toolCount: severstalAssistant.tools.length,
   toolNames: severstalAssistant.tools.map((t: any) => t.name || t.definition?.name || 'unnamed'),
   toolTypes: severstalAssistant.tools.map((t: any) => t.constructor?.name || typeof t),
+=======
+// Verification: Log configuration
+console.log('[severstalAssistant] Multi-agent architecture initialized');
+console.log('[severstalAssistant] Router Agent:', {
+  name: routerAgent.name,
+  handoffCount: routerAgent.handoffs?.length || 0,
+  handoffNames: routerAgent.handoffs?.map((a: any) => a.name) || [],
+  toolCount: routerAgent.tools?.length || 0,
+  toolNames: routerAgent.tools?.map((t: any) => t.name || t.definition?.name || 'unnamed') || [],
+>>>>>>> a1159f9731e2294140bb5bed24720bd3f67792e0
 });
 
-export const chatSeverstalAssistantScenario = [severstalAssistant];
-export default chatSeverstalAssistantScenario;
+// Log handoff agents
+if (routerAgent.handoffs && routerAgent.handoffs.length > 0) {
+  console.log('[severstalAssistant] Handoff agents configured:');
+  routerAgent.handoffs.forEach((agent: any, idx: number) => {
+    console.log(`  ${idx + 1}. ${agent.name}:`, agent.handoffDescription);
+  });
+}
+
+// Log tools
+if (routerAgent.tools && routerAgent.tools.length > 0) {
+  console.log('[severstalAssistant] Tools configured:');
+  routerAgent.tools.forEach((tool: any, idx: number) => {
+    const name = tool.name || tool.definition?.name || 'unnamed';
+    const desc = (tool.description || tool.definition?.description || '').substring(0, 80);
+    console.log(`  ${idx + 1}. ${name}: ${desc}`);
+  });
+}

@@ -292,6 +292,115 @@ export function useMcpToolSession() {
   }
 
   /**
+   * Handles response.output_item.done event.
+   * Fired when an output item (including function_call items) is completed.
+   *
+   * @param event - Server event with the completed item details
+   */
+  function handleOutputItemDone(event: any) {
+    const item = event.item;
+
+    if (!item) {
+      logServerEvent(event);
+      return;
+    }
+
+    console.log(`[MCP] Output item done:`, item);
+
+    // Handle function_call completion
+    if (item.type === 'function_call') {
+      const { id, name, call_id, status, arguments: args, output } = item;
+      const itemId = id || call_id;
+
+      logServerEvent(event);
+
+      // Check if this is an error status
+      if (status === 'failed' || status === 'error') {
+        console.error(`[MCP] Function call failed: ${name} (${itemId})`, event);
+
+        addTranscriptBreadcrumb(`MCP Function Call Failed: ${name}`, {
+          callId: itemId,
+          status: status,
+          arguments: args,
+          output: output,
+          event: event,
+        });
+
+        // Clean up from tracking
+        if (itemId) {
+          mcpCallsInProgressRef.current.delete(itemId);
+        }
+      } else if (status === 'completed') {
+        console.log(`[MCP] Function call completed: ${name} (${itemId})`);
+
+        // Log the output to help debug issues
+        if (output !== undefined) {
+          console.log(`[MCP] Function call output for ${name}:`, output);
+        } else {
+          console.warn(`[MCP] Function call ${name} completed but has no output`);
+        }
+
+        addTranscriptBreadcrumb(`MCP Function Call Done: ${name}`, {
+          callId: itemId,
+          status: status,
+          arguments: args,
+          hasOutput: output !== undefined,
+          outputPreview: output !== undefined
+            ? (typeof output === 'string' ? output.substring(0, 100) : JSON.stringify(output).substring(0, 100))
+            : 'no output',
+        });
+
+        // Keep tracking for a moment to catch any errors that follow
+        // We'll clean up when we see the next conversation.item.created or after a timeout
+        if (itemId) {
+          const callInfo = mcpCallsInProgressRef.current.get(itemId);
+          if (callInfo) {
+            // Mark as completed but don't delete yet
+            (callInfo as any).completedAt = Date.now();
+
+            // Clean up after 5 seconds if no error occurs
+            setTimeout(() => {
+              if (mcpCallsInProgressRef.current.has(itemId)) {
+                console.log(`[MCP] Cleaning up completed call ${name} (${itemId})`);
+                mcpCallsInProgressRef.current.delete(itemId);
+              }
+            }, 5000);
+          }
+        }
+      }
+    } else {
+      // Log other types of output items
+      logServerEvent(event);
+    }
+  }
+
+  /**
+   * Handles conversation.item.created event for function_call_output items.
+   * This helps us track when the output from a function call is being added to the conversation.
+   */
+  function handleFunctionCallOutputCreated(event: any) {
+    const item = event.item;
+    if (!item || item.type !== 'function_call_output') return false;
+
+    const { id, call_id, output } = item;
+    const itemId = call_id || id;
+
+    console.log(`[MCP] Function call output being created for call ${itemId}:`, {
+      hasOutput: output !== undefined,
+      outputType: typeof output,
+      outputLength: typeof output === 'string' ? output.length : 'N/A',
+    });
+
+    // Check if the output is problematic
+    if (output === undefined || output === null) {
+      console.warn(`[MCP] Function call output is ${output} for call ${itemId}`);
+    }
+
+    logServerEvent(event);
+    return true;
+  }
+
+  /**
    * Main handler for MCP-related transport events.
    * Routes server events to the appropriate handler based on event type.
    *
@@ -307,6 +416,73 @@ export function useMcpToolSession() {
     }
 
     switch (event.type) {
+      case "error": {
+        // Check if this error is related to an MCP tool call that was in progress or recently completed
+        const hasActiveMcpCalls = mcpCallsInProgressRef.current.size > 0;
+
+        if (hasActiveMcpCalls) {
+          const errorObj = event.error || event;
+          let errorMessage = 'Unknown MCP error';
+
+          // Collect information about active/recent calls
+          const callsInfo = Array.from(mcpCallsInProgressRef.current.entries()).map(([id, info]) => ({
+            id,
+            name: info.name,
+            completedAt: (info as any).completedAt,
+            isRecent: (info as any).completedAt && (Date.now() - (info as any).completedAt < 2000),
+          }));
+
+          // Check if error object is empty
+          if (errorObj && typeof errorObj === 'object') {
+            if (Object.keys(errorObj.error || errorObj).length === 0) {
+              errorMessage = 'Empty error object received during/after MCP tool execution';
+              console.warn('[MCP] Empty error during tool execution. Active/recent calls:', callsInfo);
+            } else if (errorObj.message && errorObj.message !== '{}') {
+              errorMessage = errorObj.message;
+            } else if (errorObj.error) {
+              errorMessage = typeof errorObj.error === 'string'
+                ? errorObj.error
+                : JSON.stringify(errorObj.error);
+            }
+          }
+
+          console.error('[MCP] Error during/after tool execution:', errorMessage, event);
+
+          // Log error with context about active calls
+          logServerEvent({
+            type: 'mcp_error',
+            message: errorMessage,
+            activeCalls: callsInfo,
+            raw: event,
+          });
+
+          // Add breadcrumb for any active MCP calls
+          mcpCallsInProgressRef.current.forEach((info, id) => {
+            const isRecentlyCompleted = (info as any).completedAt && (Date.now() - (info as any).completedAt < 2000);
+            addTranscriptBreadcrumb(`MCP Tool Error: ${info.name}`, {
+              callId: id,
+              status: isRecentlyCompleted ? 'error_after_completion' : 'error',
+              error: errorMessage,
+              timing: isRecentlyCompleted ? 'error occurred shortly after completion' : 'error during execution',
+            });
+          });
+
+          // Clean up all active calls since we hit an error
+          mcpCallsInProgressRef.current.clear();
+
+          return true;
+        }
+        return false;
+      }
+
+      case "conversation.item.created": {
+        // Check if this is a function_call_output being added
+        if (event.item?.type === 'function_call_output') {
+          return handleFunctionCallOutputCreated(event);
+        }
+        return false;
+      }
+
       case "response.output_item.added":
       case "conversation.item.added":
         // Check if this is an MCP call and handle it
@@ -315,6 +491,11 @@ export function useMcpToolSession() {
           return true;
         }
         return false;
+
+      case "response.output_item.done":
+        // Handle completion of function_call items (including MCP tools)
+        handleOutputItemDone(event);
+        return true;
 
       case "response.mcp_call.arguments.delta":
       case "response.mcp_call_arguments.delta":

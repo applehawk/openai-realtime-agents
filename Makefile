@@ -1,4 +1,4 @@
-.PHONY: help install dev build start lint test-api-key
+.PHONY: help install dev build start lint test-api-key updown logs
 
 help:
 	@echo "Available commands:"
@@ -7,6 +7,8 @@ help:
 	@echo "  make build        - Build for production"
 	@echo "  make start        - Start production server"
 	@echo "  make lint         - Run linter"
+	@echo "  make updown       - Pull latest code, rebuild and restart Docker containers"
+	@echo "  make logs         - View Next.js application logs from Docker container"
 	@echo "  make test-api-key - Test OpenAI API key"
 
 install:
@@ -25,7 +27,32 @@ lint:
 	npm run lint
 
 updown:
-	git pull && docker compose down && docker compose up --build
+	@echo "========================================"
+	@echo "Step 1/3: Pulling latest code from git..."
+	@echo "========================================"
+	git pull
+	@echo ""
+	@echo "========================================"
+	@echo "Step 2/3: Stopping Docker containers..."
+	@echo "========================================"
+	docker compose down
+	@echo ""
+	@echo "========================================"
+	@echo "Step 3/3: Building and starting Docker containers..."
+	@echo "========================================"
+	@echo "Next.js logs will appear below..."
+	@echo "Press Ctrl+C to stop the containers"
+	@echo "========================================"
+	@echo ""
+	docker compose up --build --force-recreate --remove-orphans -d
+
+logs:
+	@echo "========================================"
+	@echo "Viewing Next.js application logs..."
+	@echo "Press Ctrl+C to stop viewing logs"
+	@echo "========================================"
+	@echo ""
+	docker compose logs -f realtime-agents
 
 test-api-key:
 	@echo "Testing OpenAI API key..."

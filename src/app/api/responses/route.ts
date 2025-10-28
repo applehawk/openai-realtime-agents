@@ -30,6 +30,12 @@ async function structuredResponse(openai: OpenAI, body: any) {
 
 async function textResponse(openai: OpenAI, body: any) {
   try {
+    console.log('[responses API] Incoming request body:', JSON.stringify({
+      model: body.model,
+      inputLength: body.input?.length,
+      toolsCount: body.tools?.length,
+    }, null, 2));
+
     const response = await openai.responses.create({
       ...(body as any),
       stream: false,
@@ -37,8 +43,18 @@ async function textResponse(openai: OpenAI, body: any) {
 
     return NextResponse.json(response);
   } catch (err: any) {
-    console.error('responses proxy error', err);
-    return NextResponse.json({ error: 'failed' }, { status: 500 });
+    console.error('[responses API] Full error details:', {
+      message: err.message,
+      status: err.status,
+      type: err.type,
+      code: err.code,
+      error: err.error,
+    });
+    return NextResponse.json({
+      error: 'failed',
+      details: err.message || 'Unknown error',
+      status: err.status,
+    }, { status: err.status || 500 });
   }
 }
   

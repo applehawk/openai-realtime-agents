@@ -67,7 +67,7 @@ export interface GuardrailResultType {
 
 export interface TranscriptItem {
   itemId: string;
-  type: "MESSAGE" | "BREADCRUMB";
+  type: "MESSAGE" | "BREADCRUMB" | "TASK_PROGRESS";
   role?: "user" | "assistant";
   title?: string;
   data?: Record<string, any>;
@@ -77,6 +77,11 @@ export interface TranscriptItem {
   status: "IN_PROGRESS" | "DONE";
   isHidden: boolean;
   guardrailResult?: GuardrailResultType;
+  // For TASK_PROGRESS type:
+  sessionId?: string;
+  progress?: number; // 0-100
+  progressMessage?: string;
+  progressUpdates?: any[]; // Array of progress updates
 }
 
 export interface Log {

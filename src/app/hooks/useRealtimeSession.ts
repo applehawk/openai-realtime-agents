@@ -63,6 +63,41 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
 
     // Then handle other event types
     switch (event.type) {
+      case "error": {
+        // Handle error events that come through transport
+        const errorObj = event.error || event;
+        let errorMessage = 'Unknown error';
+        let errorDetails = errorObj;
+
+        // Check if error object is empty
+        if (errorObj && typeof errorObj === 'object' && Object.keys(errorObj.error || {}).length === 0) {
+          console.warn('[Transport] Received empty error object:', event);
+          errorMessage = 'Empty error object received from transport';
+          errorDetails = { raw: event };
+        } else if (errorObj.message) {
+          errorMessage = errorObj.message;
+        } else if (errorObj.error) {
+          errorMessage = typeof errorObj.error === 'string'
+            ? errorObj.error
+            : JSON.stringify(errorObj.error);
+          errorDetails = errorObj.error;
+        } else if (event.message && event.message !== '{}') {
+          errorMessage = event.message;
+        } else {
+          errorMessage = 'Error event with no details';
+          errorDetails = event;
+        }
+
+        console.error('[Transport] Error event:', errorMessage, errorDetails);
+
+        logServerEvent({
+          type: "error",
+          message: errorMessage,
+          details: errorDetails,
+          raw: event,
+        });
+        break;
+      }
       case "conversation.item.input_audio_transcription.completed": {
         historyHandlers.handleTranscriptionCompleted(event);
         break;
@@ -123,9 +158,39 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
 
     // Define error handler
     const handleError = (...args: any[]) => {
+      const errorArg = args[0];
+
+      // Handle empty error objects or missing error details
+      let errorMessage = 'Unknown error';
+      let errorDetails = errorArg;
+
+      if (errorArg && typeof errorArg === 'object') {
+        // Check if error object is empty
+        if (Object.keys(errorArg).length === 0) {
+          console.warn('[Session] Received empty error object:', args);
+          errorMessage = 'Empty error object received';
+          errorDetails = { raw: args };
+        } else if (errorArg.message) {
+          errorMessage = errorArg.message;
+        } else if (errorArg.error) {
+          errorMessage = typeof errorArg.error === 'string'
+            ? errorArg.error
+            : JSON.stringify(errorArg.error);
+          errorDetails = errorArg.error;
+        } else {
+          errorMessage = JSON.stringify(errorArg);
+        }
+      } else if (typeof errorArg === 'string') {
+        errorMessage = errorArg;
+      }
+
+      console.error('[Session] Error:', errorMessage, errorDetails);
+
       logServerEvent({
         type: "error",
-        message: args[0],
+        message: errorMessage,
+        details: errorDetails,
+        raw: args,
       });
     };
 

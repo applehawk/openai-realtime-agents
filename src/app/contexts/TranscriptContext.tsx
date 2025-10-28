@@ -20,14 +20,19 @@ type TranscriptContextValue = {
   ) => void;
   updateTranscriptMessage: (itemId: string, text: string, isDelta: boolean) => void;
   addTranscriptBreadcrumb: (title: string, data?: Record<string, any>) => void;
+  addTaskProgressMessage: (sessionId: string, taskDescription: string) => void;
+  updateTaskProgress: (sessionId: string, progress: number, message: string, details?: any) => void;
   toggleTranscriptItemExpand: (itemId: string) => void;
   updateTranscriptItem: (itemId: string, updatedProperties: Partial<TranscriptItem>) => void;
+  activeSessionId: string | null;
+  setActiveSessionId: (sessionId: string | null) => void;
 };
 
 const TranscriptContext = createContext<TranscriptContextValue | undefined>(undefined);
 
 export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
   const [transcriptItems, setTranscriptItems] = useState<TranscriptItem[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   function newTimestampPretty(): string {
     const now = new Date();
@@ -108,6 +113,12 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
         isHidden: false,
       },
     ]);
+
+    // Auto-detect sessionId from Intelligent Supervisor breadcrumbs
+    if (title.includes('Intelligent Supervisor') && data?.sessionId) {
+      console.log('[TranscriptContext] Auto-detected sessionId:', data.sessionId);
+      setActiveSessionId(data.sessionId);
+    }
   };
 
   const toggleTranscriptItemExpand: TranscriptContextValue["toggleTranscriptItemExpand"] = (itemId) => {
@@ -126,6 +137,49 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
     );
   };
 
+  const addTaskProgressMessage: TranscriptContextValue["addTaskProgressMessage"] = (sessionId, taskDescription) => {
+    console.log('[TranscriptContext] Creating TASK_PROGRESS message for session:', sessionId);
+
+    setTranscriptItems((prev) => [
+      ...prev,
+      {
+        itemId: `task-progress-${sessionId}`,
+        type: "TASK_PROGRESS",
+        role: "assistant",
+        title: taskDescription,
+        sessionId,
+        progress: 0,
+        progressMessage: "Инициализация задачи...",
+        progressUpdates: [],
+        expanded: false,
+        timestamp: newTimestampPretty(),
+        createdAtMs: Date.now(),
+        status: "IN_PROGRESS",
+        isHidden: false,
+      },
+    ]);
+  };
+
+  const updateTaskProgress: TranscriptContextValue["updateTaskProgress"] = (sessionId, progress, message, details) => {
+    console.log('[TranscriptContext] Updating task progress:', { sessionId, progress, message });
+
+    setTranscriptItems((prev) =>
+      prev.map((item) => {
+        if (item.type === "TASK_PROGRESS" && item.sessionId === sessionId) {
+          const newUpdates = [...(item.progressUpdates || []), { progress, message, details, timestamp: Date.now() }];
+          return {
+            ...item,
+            progress,
+            progressMessage: message,
+            progressUpdates: newUpdates,
+            status: progress >= 100 ? "DONE" : "IN_PROGRESS",
+          };
+        }
+        return item;
+      })
+    );
+  };
+
   return (
     <TranscriptContext.Provider
       value={{
@@ -133,8 +187,12 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
         addTranscriptMessage,
         updateTranscriptMessage,
         addTranscriptBreadcrumb,
+        addTaskProgressMessage,
+        updateTaskProgress,
         toggleTranscriptItemExpand,
         updateTranscriptItem,
+        activeSessionId,
+        setActiveSessionId,
       }}
     >
       {children}
