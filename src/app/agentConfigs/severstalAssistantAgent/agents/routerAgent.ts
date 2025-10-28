@@ -21,6 +21,7 @@ import { getTaskContext } from '../tools/getTaskContextTool';
 import { getCurrentUserInfo } from '../tools/interview/userInfoTool';
 import { updateUserPreferences } from '../tools/rag/userPreferencesTool';
 import { manageUserInterview } from '../tools/interview/interviewTools';
+import { updateUserPreferencesTool, detectPreferenceUpdateRequest } from '../tools/preferences/updatePreferencesTool';
 
 export const routerAgent = new RealtimeAgent({
   name: 'routerAgent',
@@ -44,7 +45,11 @@ export const routerAgent = new RealtimeAgent({
     // User info tools для проверки статуса интервью
     getCurrentUserInfo,
     manageUserInterview, // ← Универсальный инструмент для управления интервью и получения предпочтений
-    updateUserPreferences, // ← Обновление предпочтений пользователя
+    updateUserPreferences, // ← Обновление предпочтений пользователя (старый способ)
+    
+    // Новые инструменты для обновления предпочтений через естественную речь
+    detectPreferenceUpdateRequest, // ← Анализ запроса на изменение предпочтений
+    updateUserPreferencesTool, // ← Обновление предпочтений по категориям
 
     // Backend agent для всех многошаговых задач
     delegateToIntelligentSupervisor, // ← Unified intelligent supervisor (Path 4)
