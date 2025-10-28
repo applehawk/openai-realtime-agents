@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Forward request to MCP server directly
-    const response = await fetch(`${PREFERENCES_MCP_BASE_URL}/api/v1/mcp/execute`, {
+    const response = await fetch(`${PREFERENCES_MCP_BASE_URL}/api/v1/mcp/call`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

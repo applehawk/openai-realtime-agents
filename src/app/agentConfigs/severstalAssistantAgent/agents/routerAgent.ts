@@ -19,7 +19,7 @@ import { interviewAgent, setInterviewAgentHandoff } from './interviewAgent';
 import { delegateToIntelligentSupervisor } from '../tools/intelligentSupervisorTool'; // Unified supervisor
 import { getTaskContext } from '../tools/getTaskContextTool';
 import { getCurrentUserInfo } from '../tools/interview/userInfoTool';
-import { updateUserPreferences } from '../tools/rag/userPreferencesTool';
+import { updateUserPreferences, queryUserPreferences } from '../tools/rag/userPreferencesTool';
 import { manageUserInterview } from '../tools/interview/interviewTools';
 import { updateUserPreferencesTool, detectPreferenceUpdateRequest } from '../tools/preferences/updatePreferencesTool';
 
@@ -45,6 +45,7 @@ export const routerAgent = new RealtimeAgent({
     // User info tools для проверки статуса интервью
     getCurrentUserInfo,
     manageUserInterview, // ← Универсальный инструмент для управления интервью и получения предпочтений
+    queryUserPreferences, // ← Запрос предпочтений пользователя
     updateUserPreferences, // ← Обновление предпочтений пользователя (старый способ)
     
     // Новые инструменты для обновления предпочтений через естественную речь
