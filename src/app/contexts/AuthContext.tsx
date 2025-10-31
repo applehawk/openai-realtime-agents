@@ -179,20 +179,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
 
     try {
-      // Get access token from cookie
-      const authResponse = await fetch('/api/auth/me', {
-        credentials: 'include',
-      });
-
-      if (!authResponse.ok) {
-        throw new Error('Not authenticated');
-      }
-
       // Get current page URL for return
       const returnUrl = window.location.href;
       
-      // Get auth URL directly from backend
-      const response = await fetch(`${process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/apib/v1/'}google/auth/url`, {
+      // Get auth URL via Next.js API route (handles token from cookie)
+      const response = await fetch('/api/google/auth-url', {
         headers: {
           'X-Return-URL': returnUrl
         },
@@ -200,7 +191,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get auth URL');
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to get auth URL');
       }
 
       const { auth_url } = await response.json();
@@ -221,13 +213,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/apib/v1/'}google/disconnect/all`, {
+      // Use Next.js API route (handles token from cookie)
+      const response = await fetch('/api/google/disconnect?service=all', {
         method: 'DELETE',
         credentials: 'include',
       });
 
       if (!response.ok) {
-        throw new Error('Failed to disconnect Google');
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to disconnect Google');
       }
 
       setGoogleConnected(false);
@@ -243,7 +237,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkGoogleStatus = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/apib/v1/'}google/status`, {
+      // Use Next.js API route (handles token from cookie)
+      const response = await fetch('/api/google/status', {
         credentials: 'include',
       });
 

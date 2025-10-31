@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 
 const AUTH_API_BASE = process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/apib/v1/';
 
-export async function DELETE(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
     const accessToken = cookieStore.get('access_token')?.value;
@@ -15,14 +15,14 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Get service from query param (default to 'all')
-    const service = request.nextUrl.searchParams.get('service') || 'all';
+    // Get return URL from header or query param
+    const returnUrl = request.headers.get('X-Return-URL') || request.nextUrl.searchParams.get('return_url') || '/';
 
-    // Call backend to disconnect Google
-    const response = await fetch(`${AUTH_API_BASE}google/disconnect/${service}`, {
-      method: 'DELETE',
+    // Call backend to get Google auth URL
+    const response = await fetch(`${AUTH_API_BASE}google/auth/url`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
+        'X-Return-URL': returnUrl,
       },
     });
 
@@ -34,11 +34,12 @@ export async function DELETE(request: NextRequest) {
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Disconnect Google error:', error);
-    const message = error instanceof Error ? error.message : 'Failed to disconnect Google';
+    console.error('Get Google auth URL error:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get auth URL';
     return NextResponse.json(
       { detail: message },
       { status: 500 }
     );
   }
 }
+
