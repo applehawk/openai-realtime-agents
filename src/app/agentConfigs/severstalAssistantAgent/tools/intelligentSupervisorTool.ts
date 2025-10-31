@@ -23,87 +23,65 @@ import { tool, RealtimeItem } from '@openai/agents/realtime';
  */
 export const delegateToIntelligentSupervisor = tool({
   name: 'delegateToIntelligentSupervisor',
-  description: `
-Делегирует сложные задачи унифицированному интеллектуальному supervisor-агенту с адаптивной оценкой сложности.
+  description: `Delegates multi-step or conditional tasks to an intelligent supervisor agent that automatically assesses complexity and executes the task.
 
-**НОВОЕ (v3.2): Улучшенная делегация с единой оценкой**
-- Supervisor делает ОДНУ оценку вместо двух (экономия ~300 tokens)
-- Уровень 'tooSimple' для задач, которые primary agent может выполнить сам
-- Даже 2-7 последовательных шагов могут быть tooSimple (если нет сложной логики)
-- Если задача сложная (simple/medium/complex) → supervisor выполнит её сам
+USE THIS TOOL WHEN:
+- Task requires 2+ sequential steps with conditional logic
+- Task needs data coordination across multiple sources
+- Uncertain whether task complexity requires supervisor assistance
+- Need automatic complexity assessment and strategy selection
 
-**Используй КОГДА:**
-- ✅ Задача МОЖЕТ быть сложной (2+ шага, условная логика)
-- ✅ Не уверен в сложности задачи (простая vs средняя vs сложная)
-- ✅ Требуется автоматическая оценка и выбор стратегии выполнения
-- ✅ Нужны условная логика, координация, или кросс-референсы данных
+DO NOT USE THIS TOOL WHEN:
+- Single-step action with explicit parameters (use direct MCP tools)
+- Simple RAG query only (use lightrag_query)
+- Basic read/write without logic (use corresponding MCP tool)
 
-**НЕ используй КОГДА:**
-- ❌ ТОЧНО простое одношаговое действие с явными параметрами (используй MCP tools напрямую)
-- ❌ Только RAG запрос (используй lightrag_query)
-- ❌ Простое чтение/запись без логики (используй соответствующий MCP tool)
+OUTPUTS:
+Returns a JSON object with:
+- success (boolean): Whether task completed successfully
+- delegateBack (boolean): If true, task is simple enough for primary agent to handle directly. Follow the guidance provided.
+- guidance (string): Instructions for primary agent when task is delegated back
+- nextResponse (string): Supervisor's response when task is executed
+- complexity (string): Assessed complexity level (tooSimple/simple/medium/complex)
+- strategy (string): Execution strategy used (direct/flat/hierarchical)
+- workflowSteps (array): Completed workflow steps for transparency
+- executionTime (number): Execution duration in milliseconds
 
-**Как это работает:**
-1. **Step 1 (v3.2)**: Единая оценка сложности с поддержкой делегации
-   - tooSimple: 1-7 последовательных шагов БЕЗ сложной логики → возврат guidance для primary agent
-   - simple/medium/complex: задачи со сложной логикой → supervisor выполняет
-2. Если tooSimple → возврат с guidance (экономия 70-90% токенов)
-3. Иначе выберет стратегию выполнения:
-   - Direct: прямое выполнение для простых задач (simple)
-   - Flat: плоский workflow для средних задач (medium)
-   - Hierarchical: иерархическая декомпозиция для сложных задач (complex)
-4. Выполнит задачу с прогресс-трекингом
-5. Вернёт детальный ответ с workflowSteps
+EDGE CASES:
+- If delegateBack is true, primary agent must execute the task following guidance
+- If API error occurs, returns success: false with error details and fallback response
+- Tasks with 2-7 sequential steps but no complex logic will be marked tooSimple and delegated back
 
-**Преимущества:**
-- ✅ Умная делегация: автоматически определяет, нужна ли обработка
-- ✅ Экономия токенов: простые задачи возвращаются сразу
-- ✅ НЕ нужно определять сложность заранее (supervisor решит сам)
-- ✅ Прогресс-трекинг всегда включён
-- ✅ workflowSteps всегда возвращаются
-- ✅ Поддерживает PLAN FIRST и EXECUTE IMMEDIATELY modes
+EXAMPLES:
+Task: "Read email from Anna and schedule meeting"
+Result: delegateBack=true (2 simple steps, no complex logic)
 
-**Примеры задач:**
-- «Прочитай письмо от Анны и назначь встречу» → tooSimple (2 шага без сложной логики)
-- «Найди свободное время и создай встречу с Петром» → simple/medium (нужен анализ)
-- «Прочитай последнее письмо» → tooSimple (1 простой шаг)
-- «Если Пётр свободен, создай встречу» → medium (условная логика)
-- «Найди всех участников и отправь приглашения» → complex (массовая операция)
+Task: "Find free time slot and create meeting with Peter"
+Result: delegateBack=false, complexity=medium (requires time analysis)
 
-**Параметры:**
-- taskDescription: полное описание задачи на русском (2-5 предложений)
-- conversationContext: краткий контекст разговора (2-3 предложения)
-- executionMode: (опционально) 'auto' | 'plan' | 'execute'
-  - 'auto': supervisor сам решит, показывать план или выполнить сразу (по умолчанию)
-  - 'plan': PLAN FIRST - вернуть план БЕЗ выполнения (для подтверждения)
-  - 'execute': EXECUTE IMMEDIATELY - выполнить сразу без плана
+Task: "If Peter is available, create meeting; otherwise send postponement email"
+Result: delegateBack=false, complexity=medium (conditional logic)
 
-**Обработка ответа:**
-- Если result.delegateBack === true → задача простая, следуй guidance в result.guidance
-- Иначе → задача выполнена supervisor, используй result.nextResponse
-
-**ВАЖНО:**
-- Это РЕКОМЕНДУЕМЫЙ способ для всех потенциально сложных задач
-- Не бойся делегировать: supervisor сам решит, нужна ли обработка
-`,
+Task: "Find all participants and send invitations to each"
+Result: delegateBack=false, complexity=complex (batch operation)`,
   parameters: {
     type: 'object',
     properties: {
       taskDescription: {
         type: 'string',
         description:
-          'Полное описание задачи на русском языке. Будь максимально детальным - включи все требования, контекст, временные рамки. Минимум 2-5 предложений.',
+          'Complete task description in Russian. Include all requirements, context, constraints, and time frames. Must be detailed and specific (2-5 sentences minimum). Example: "Найди письмо от Анны Ивановой за последнюю неделю, прочитай его содержание, и если в нём упоминается встреча, создай событие в календаре на указанную дату с приглашением Анны."',
       },
       conversationContext: {
         type: 'string',
         description:
-          'Краткое резюме беседы с пользователем - ключевые моменты, что уже обсуждалось, какая информация уже известна. 2-3 предложения.',
+          'Brief summary of the conversation with user. Include key points already discussed and information already known. 2-3 sentences. Example: "Пользователь упомянул, что ожидает важное письмо от Анны. Ранее обсуждалась необходимость организации встречи на этой неделе."',
       },
       executionMode: {
         type: 'string',
         enum: ['auto', 'plan', 'execute'],
         description:
-          "Режим выполнения: 'auto' (supervisor решает сам), 'plan' (PLAN FIRST - вернуть план для подтверждения), 'execute' (EXECUTE IMMEDIATELY - выполнить сразу). Default: 'auto'",
+          "Execution mode: 'auto' (supervisor decides whether to show plan first or execute immediately), 'plan' (return plan WITHOUT execution for user confirmation), 'execute' (execute immediately without showing plan). Defaults to 'auto'.",
       },
     },
     required: ['taskDescription', 'conversationContext'],
