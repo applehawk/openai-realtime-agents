@@ -29,15 +29,6 @@ export interface TokenResponse {
   token_type: string;
 }
 
-export interface GoogleAuthUrlResponse {
-  auth_url: string;
-  state: string;
-}
-
-export interface GoogleStatusResponse {
-  gmail_connected: boolean;
-  calendar_connected: boolean;
-}
 
 /**
  * Make authenticated request to auth server
@@ -211,71 +202,4 @@ export const authClient = {
     });
   },
 
-  /**
-   * Get Google OAuth URL
-   */
-  async getGoogleAuthUrl(accessToken: string): Promise<GoogleAuthUrlResponse> {
-    const response = await authFetch('google/auth/url', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to get OAuth URL');
-    }
-
-    return response.json();
-  },
-
-  /**
-   * Handle Google OAuth callback
-   */
-  async handleGoogleCallback(code: string, state: string, accessToken: string) {
-    const response = await authFetch(`google/auth/callback?code=${code}&state=${state}`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('OAuth callback failed');
-    }
-
-    return response.json();
-  },
-
-  /**
-   * Get Google integration status
-   */
-  async getGoogleStatus(accessToken: string): Promise<GoogleStatusResponse> {
-    const response = await authFetch('google/status', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to get Google status');
-    }
-
-    return response.json();
-  },
-
-  /**
-   * Disconnect all Google services
-   */
-  async disconnectGoogle(accessToken: string): Promise<void> {
-    const response = await authFetch('google/disconnect/all', {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to disconnect Google');
-    }
-  },
 };
