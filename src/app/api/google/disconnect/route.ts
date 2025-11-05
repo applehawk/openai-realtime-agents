@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authClient } from '@/app/lib/authClient';
 import { cookies } from 'next/headers';
 
-export async function DELETE(_request: NextRequest) {
+const AUTH_API_BASE = process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/apib/v1/';
+
+export async function DELETE(request: NextRequest) {
   try {
     const cookieStore = await cookies();
     const accessToken = cookieStore.get('access_token')?.value;
@@ -14,10 +15,24 @@ export async function DELETE(_request: NextRequest) {
       );
     }
 
-    // Disconnect Google from auth server
-    await authClient.disconnectGoogle(accessToken);
+    // Get service from query param (default to 'all')
+    const service = request.nextUrl.searchParams.get('service') || 'all';
 
-    return NextResponse.json({ message: 'Google disconnected successfully' });
+    // Call backend to disconnect Google
+    const response = await fetch(`${AUTH_API_BASE}google/disconnect/${service}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      return NextResponse.json(error, { status: response.status });
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
   } catch (error) {
     console.error('Disconnect Google error:', error);
     const message = error instanceof Error ? error.message : 'Failed to disconnect Google';

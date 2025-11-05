@@ -9,15 +9,26 @@ interface GoogleStatus {
   calendar_connected: boolean;
 }
 
+interface ContainerStatus {
+  status: string;
+  running: boolean;
+  port?: number;
+  health?: string;
+  container_id?: string;
+  container_name?: string;
+}
+
 export default function UserProfile() {
   const { user, logout, refreshUser } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
   const [googleStatus, setGoogleStatus] = useState<GoogleStatus | null>(null);
+  const [containerStatus, setContainerStatus] = useState<ContainerStatus | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
     if (user?.google_connected) {
       loadGoogleStatus();
+      loadContainerStatus();
     }
   }, [user]);
 
@@ -36,11 +47,27 @@ export default function UserProfile() {
     }
   };
 
+  const loadContainerStatus = async () => {
+    try {
+      const response = await fetch('/api/containers/status', {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setContainerStatus(data);
+      }
+    } catch (error) {
+      console.error('Failed to load container status:', error);
+    }
+  };
+
   const handleConnectGoogle = async () => {
     setIsConnecting(true);
     try {
       const response = await fetch('/api/google/auth-url', {
         credentials: 'include',
+        headers: { 'X-Return-URL': window.location.href },
       });
 
       if (response.ok) {
@@ -120,6 +147,25 @@ export default function UserProfile() {
                     📅 Calendar: <strong>{googleStatus?.calendar_connected ? 'Connected' : 'Not connected'}</strong>
                   </div>
                 </div>
+
+                {/* MCP Container Status */}
+                {containerStatus && (
+                  <div className={styles.containerStatus} style={{ marginTop: '0.75rem' }}>
+                    <div className={`${styles.serviceItem} ${containerStatus.running ? styles.connected : ''}`}>
+                      🐳 MCP Container: <strong>{containerStatus.running ? 'Running' : 'Stopped'}</strong>
+                      {containerStatus.running && containerStatus.port && (
+                        <span style={{ fontSize: '0.85em', marginLeft: '0.5rem', opacity: 0.7 }}>
+                          (port {containerStatus.port})
+                        </span>
+                      )}
+                    </div>
+                    {containerStatus.health && containerStatus.running && (
+                      <div style={{ fontSize: '0.85em', marginTop: '0.25rem', opacity: 0.7, paddingLeft: '1.5rem' }}>
+                        Health: {containerStatus.health}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className={styles.buttonGroup}>
                   <button
                     className={styles.btnGoogle}
