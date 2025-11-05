@@ -24,6 +24,7 @@ export default function UserProfile() {
   const [googleStatus, setGoogleStatus] = useState<GoogleStatus | null>(null);
   const [containerStatus, setContainerStatus] = useState<ContainerStatus | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isContainerLoading, setIsContainerLoading] = useState(false);
 
   useEffect(() => {
     if (user?.google_connected) {
@@ -99,12 +100,63 @@ export default function UserProfile() {
         alert('Google account disconnected');
         await refreshUser();
         setGoogleStatus(null);
+        setContainerStatus(null);
       } else {
         alert('Failed to disconnect Google');
       }
     } catch (error) {
       console.error('Failed to disconnect Google:', error);
       alert('Failed to disconnect Google');
+    }
+  };
+
+  const handleStartContainer = async () => {
+    setIsContainerLoading(true);
+    try {
+      const response = await fetch('/api/containers/start', {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        await loadContainerStatus();
+        alert('Container started successfully');
+      } else {
+        const error = await response.json();
+        alert(`Failed to start container: ${error.detail || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to start container:', error);
+      alert('Failed to start container');
+    } finally {
+      setIsContainerLoading(false);
+    }
+  };
+
+  const handleStopContainer = async () => {
+    if (!confirm('Are you sure you want to stop the MCP container?')) {
+      return;
+    }
+
+    setIsContainerLoading(true);
+    try {
+      const response = await fetch('/api/containers/stop', {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        await loadContainerStatus();
+        alert('Container stopped successfully');
+      } else {
+        const error = await response.json();
+        alert(`Failed to stop container: ${error.detail || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to stop container:', error);
+      alert('Failed to stop container');
+    } finally {
+      setIsContainerLoading(false);
     }
   };
 
@@ -164,6 +216,27 @@ export default function UserProfile() {
                         Health: {containerStatus.health}
                       </div>
                     )}
+                    <div className={styles.containerControls} style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                      {containerStatus.running ? (
+                        <button
+                          className={styles.btnDanger}
+                          onClick={handleStopContainer}
+                          disabled={isContainerLoading}
+                          style={{ fontSize: '0.85em', padding: '0.4rem 0.8rem' }}
+                        >
+                          {isContainerLoading ? 'Stopping...' : 'Stop Container'}
+                        </button>
+                      ) : (
+                        <button
+                          className={styles.btnGoogle}
+                          onClick={handleStartContainer}
+                          disabled={isContainerLoading}
+                          style={{ fontSize: '0.85em', padding: '0.4rem 0.8rem' }}
+                        >
+                          {isContainerLoading ? 'Starting...' : 'Start Container'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
                 <div className={styles.buttonGroup}>
