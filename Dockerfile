@@ -4,11 +4,23 @@ FROM node:20-alpine AS builder
 # Set working directory
 WORKDIR /app
 
+# Accept build arguments (only for public or build-time vars)
+ARG AUTH_API_BASE
+ARG NEXT_PUBLIC_AUTH_API_URL
+ARG RAG_SERVER_URL
+ARG RAG_API_BASE_URL
+
+# Set as environment variables for build
+ENV AUTH_API_BASE=${AUTH_API_BASE}
+ENV NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL}
+ENV RAG_SERVER_URL=${RAG_SERVER_URL}
+ENV RAG_API_BASE_URL=${RAG_API_BASE_URL}
+
 # Copy package files
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production=false
+RUN npm ci
 
 # Copy source code
 COPY . .

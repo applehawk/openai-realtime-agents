@@ -23,7 +23,7 @@ import { useRealtimeSession } from "./hooks/useRealtimeSession";
 
 // Agent configs
 import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
-import { chatSeverstalAssistantScenario } from "@/app/agentConfigs/severstalAssistantAgent";
+import { chatSeverstalAssistantScenario, initializeMCPServersBeforeAgent } from "@/app/agentConfigs/severstalAssistantAgent";
 
 // Map used by connect logic for scenarios defined via the SDK.
 const sdkScenarioMap: Record<string, RealtimeAgent[]> = {
@@ -131,6 +131,9 @@ function App() {
 
   useHandleSessionHistory();
 
+  // Note: MCP server initialization moved to UserProfile.tsx
+  // It will be initialized after container starts successfully
+
   useEffect(() => {
     let finalAgentConfig = searchParams.get("agentConfig");
     if (!finalAgentConfig || !allAgentSets[finalAgentConfig]) {
@@ -200,6 +203,10 @@ function App() {
       if (sessionStatus !== "DISCONNECTED") return;
 
       try {
+        // Initialize MCP servers BEFORE creating the session
+        console.log('[App] Initializing MCP servers before Realtime session...');
+        await initializeMCPServersBeforeAgent();
+
         const EPHEMERAL_KEY = await fetchEphemeralKey();
         if (!EPHEMERAL_KEY) return;
 

@@ -4,13 +4,38 @@
  */
 
 // Normalize the base URL to ensure it ends with a slash
-const normalizeBaseUrl = (url: string): string => {
+const normalizeBaseUrl = (url: string | undefined): string | undefined => {
+  if (!url) return undefined;
   return url.endsWith('/') ? url : `${url}/`;
 };
 
-const AUTH_API_BASE = normalizeBaseUrl(
-  process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/apib/v1/'
-);
+
+/**
+ * Выбор базового URL в зависимости от окружения исполнения.
+ * - На сервере (Node) используем AUTH_API_BASE (не public) — внутренний Docker hostname.
+ * - В браузере используем NEXT_PUBLIC_AUTH_API_URL (public или относительный).
+ */
+const getAuthApiBase = (): string => {
+  // серверная среда (Node) — используем AUTH_API_BASE
+  if (typeof window === 'undefined') {
+    const internal = normalizeBaseUrl(process.env.AUTH_API_BASE);
+    if (!internal) {
+      // fallback: если не задан AUTH_API_BASE, пробуем NEXT_PUBLIC (чтобы не сломать dev)
+      const fallback = normalizeBaseUrl(process.env.NEXT_PUBLIC_AUTH_API_URL || process.env.AUTH_API_BASE);
+      if (!fallback) {
+        throw new Error('AUTH_API_BASE is not set for server-side requests');
+      }
+      return fallback;
+    }
+    return internal;
+  }
+
+  // браузерная среда — используем публичную переменную
+  const publicUrl = normalizeBaseUrl(process.env.NEXT_PUBLIC_AUTH_API_URL) || '/';
+  return publicUrl;
+};
+
+const AUTH_API_BASE = getAuthApiBase();
 
 export interface LoginCredentials {
   username: string;

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/app/contexts/AuthContext';
+import { cleanupMCPServer } from '@/app/agentConfigs/severstalAssistantAgent';
 import styles from './UserProfile.module.css';
 
 interface GoogleStatus {
@@ -57,6 +58,7 @@ export default function UserProfile() {
       if (response.ok) {
         const data = await response.json();
         setContainerStatus(data);
+        // Note: MCP server initialization moved to App.tsx before connectToRealtime
       }
     } catch (error) {
       console.error('Failed to load container status:', error);
@@ -97,6 +99,10 @@ export default function UserProfile() {
       });
 
       if (response.ok) {
+        // Cleanup MCP server when disconnecting Google
+        console.log('[UserProfile] Google disconnected, cleaning up MCP server...');
+        await cleanupMCPServer();
+
         alert('Google account disconnected');
         await refreshUser();
         setGoogleStatus(null);
@@ -119,8 +125,8 @@ export default function UserProfile() {
       });
 
       if (response.ok) {
-        await loadContainerStatus();
-        alert('Container started successfully');
+        await loadContainerStatus(); // This will also initialize MCP server
+        alert('Container started successfully. MCP server is being initialized...');
       } else {
         const error = await response.json();
         alert(`Failed to start container: ${error.detail || 'Unknown error'}`);
@@ -146,6 +152,10 @@ export default function UserProfile() {
       });
 
       if (response.ok) {
+        // Cleanup MCP server connection before updating status
+        console.log('[UserProfile] Container stopped, cleaning up MCP server...');
+        await cleanupMCPServer();
+
         await loadContainerStatus();
         alert('Container stopped successfully');
       } else {

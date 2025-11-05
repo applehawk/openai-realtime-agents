@@ -3,6 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - AUTH_API_BASE=${AUTH_API_BASE:-http://multiagent_app:7000/api/v1}
+        - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-https://rndaibot.ru/apib/v1/}
+        - RAG_SERVER_URL=${RAG_SERVER_URL:-http://79.132.139.57:8000/mcp}
+        - RAG_API_BASE_URL=${RAG_API_BASE_URL}
     container_name: openai-realtime-agents
     restart: unless-stopped
     ports:
@@ -11,8 +16,10 @@ services:
       - .env
     environment:
       - NODE_ENV=${NODE_ENV:-production}
+      - DOCKER_ENV=true
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-https://rndaibot.ru/apib/v1}
+      - AUTH_API_BASE=${AUTH_API_BASE:-http://multiagent_app:7000/api/v1}
+      - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-https://rndaibot.ru/apib/v1/}
       - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED:-0}
       - RAG_SERVER_URL=${RAG_SERVER_URL:-http://79.132.139.57:8000/mcp}
       - RAG_API_BASE_URL=${RAG_API_BASE_URL}
@@ -31,6 +38,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - app-network
+      - oma-network       # общая для взаимодействия с oma-backend
     logging:
       driver: "json-file"
       options:
@@ -46,3 +54,5 @@ services:
 networks:
   app-network:
     driver: bridge
+  oma-network:
+    external: true  # 👈 используем уже существующую сеть
