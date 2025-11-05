@@ -1,0 +1,175 @@
+.userProfile {
+  position: relative;
+}
+
+.userButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, rgba(109, 40, 217, 0.5), rgba(124, 58, 237, 0.4));
+  border: 2px solid rgba(167, 139, 250, 0.7);
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.userButton:hover {
+  background: linear-gradient(135deg, rgba(109, 40, 217, 0.7), rgba(124, 58, 237, 0.6));
+  border-color: rgba(167, 139, 250, 0.9);
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.4);
+}
+
+.userIcon {
+  font-size: 1.2rem;
+}
+
+.username {
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 320px;
+  background: linear-gradient(135deg, #2d1b4e, #1f1433);
+  border: 2px solid rgba(167, 139, 250, 0.5);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(139, 92, 246, 0.2), 0 0 20px rgba(167, 139, 250, 0.1);
+  padding: 16px;
+  z-index: 1000;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.userInfo {
+  margin-bottom: 12px;
+}
+
+.infoRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  font-size: 0.9rem;
+  color: #ffffff;
+}
+
+.label {
+  color: #e9d5ff;
+  font-weight: 500;
+}
+
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(167, 139, 250, 0.4), transparent);
+  margin: 12px 0;
+}
+
+.googleSection h4 {
+  margin: 0 0 12px 0;
+  font-size: 0.95rem;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.googleServices {
+  margin-bottom: 12px;
+}
+
+.serviceItem {
+  padding: 8px 12px;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+  color: #ffffff;
+}
+
+.serviceItem strong {
+  color: #e9d5ff;
+}
+
+.serviceItem.connected strong {
+  color: #4ade80;
+}
+
+.buttonGroup {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.btnGoogle,
+.btnDanger {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btnGoogle {
+  background: white;
+  color: #333;
+}
+
+.btnGoogle:hover:not(:disabled) {
+  background: #f8f9fa;
+  transform: translateY(-1px);
+}
+
+.btnGoogle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btnDanger {
+  background: #ef4444;
+  color: white;
+}
+
+.btnDanger:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+.logoutButton {
+  width: 100%;
+  padding: 10px;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  color: white;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.logoutButton:hover {
+  background: rgba(139, 92, 246, 0.3);
+  border-color: rgba(167, 139, 250, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 0 8px rgba(167, 139, 250, 0.2);
+}
