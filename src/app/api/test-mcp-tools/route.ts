@@ -28,10 +28,14 @@ export async function GET(_request: Request) {
     });
 
     if (!toolsResponse.ok) {
+      const errorText = await toolsResponse.text();
+      console.error('Failed to fetch tools:', errorText);
       return NextResponse.json({
         success: false,
         message: 'Failed to fetch tools list',
         status: toolsResponse.status,
+        error: errorText,
+        note: 'MCP server has a concurrency issue with stdin/stdout. Check server logs.',
       }, { status: 500 });
     }
 

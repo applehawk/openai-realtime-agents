@@ -38,14 +38,46 @@ export default function UserProfile() {
     try {
       const response = await fetch('/api/google/status', {
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }).catch((fetchError) => {
+        // Network error (connection failed, CORS, etc.)
+        console.error('Network error loading Google status:', fetchError);
+        throw fetchError;
       });
 
+      if (!response) {
+        throw new Error('No response received');
+      }
+
       if (response.ok) {
-        const data = await response.json();
-        setGoogleStatus(data);
+        try {
+          const data = await response.json();
+          setGoogleStatus(data);
+        } catch (parseError) {
+          console.error('Failed to parse Google status response:', parseError);
+        }
+      } else {
+        // Handle non-OK responses
+        try {
+          const errorData = await response.json();
+          console.error('Failed to load Google status:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData,
+          });
+        } catch (parseError) {
+          console.error('Failed to load Google status:', {
+            status: response.status,
+            statusText: response.statusText,
+            parseError,
+          });
+        }
       }
     } catch (error) {
       console.error('Failed to load Google status:', error);
+      // Error is already logged, component will handle gracefully
     }
   };
 
@@ -53,15 +85,47 @@ export default function UserProfile() {
     try {
       const response = await fetch('/api/containers/status', {
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }).catch((fetchError) => {
+        // Network error (connection failed, CORS, etc.)
+        console.error('Network error loading container status:', fetchError);
+        throw fetchError;
       });
 
+      if (!response) {
+        throw new Error('No response received');
+      }
+
       if (response.ok) {
-        const data = await response.json();
-        setContainerStatus(data);
-        // Note: MCP server initialization moved to App.tsx before connectToRealtime
+        try {
+          const data = await response.json();
+          setContainerStatus(data);
+          // Note: MCP server initialization moved to App.tsx before connectToRealtime
+        } catch (parseError) {
+          console.error('Failed to parse container status response:', parseError);
+        }
+      } else {
+        // Handle non-OK responses
+        try {
+          const errorData = await response.json();
+          console.error('Failed to load container status:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData,
+          });
+        } catch (parseError) {
+          console.error('Failed to load container status:', {
+            status: response.status,
+            statusText: response.statusText,
+            parseError,
+          });
+        }
       }
     } catch (error) {
       console.error('Failed to load container status:', error);
+      // Error is already logged, component will handle gracefully
     }
   };
 

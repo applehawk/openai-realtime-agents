@@ -67,19 +67,31 @@ setInterviewAgentHandoff(routerAgent);
 export async function initializeMCPServersBeforeAgent(accessToken?: string): Promise<boolean> {
   try {
     console.log('[routerAgent] Initializing MCP servers before agent creation...');
+    console.log('[routerAgent] Current MCP servers count:', mcpServers.length);
+
+    // Check if MCP server is already initialized to prevent duplicates
+    if (mcpServers.length > 0) {
+      console.log('[routerAgent] MCP server already initialized, skipping re-initialization');
+      return true;
+    }
+
     const mcpServer = await mcpServerManager.fetchAndInitialize(accessToken);
 
     if (mcpServer) {
       // Add to the mcpServers array that agent references
       mcpServers.push(mcpServer);
-      console.log('[routerAgent] MCP server initialized successfully');
+      console.log('[routerAgent] MCP server initialized successfully, total count:', mcpServers.length);
       return true;
     } else {
-      console.warn('[routerAgent] Failed to initialize MCP server');
+      console.warn('[routerAgent] Failed to initialize MCP server (null returned, container may not be ready)');
       return false;
     }
   } catch (error) {
-    console.error('[routerAgent] Error initializing MCP servers:', error);
+    console.error('[routerAgent] Critical error initializing MCP servers:', {
+      error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return false;
   }
 }
@@ -89,10 +101,11 @@ export async function initializeMCPServersBeforeAgent(accessToken?: string): Pro
  */
 export async function cleanupMCPServer(): Promise<void> {
   try {
+    console.log('[routerAgent] Cleaning up MCP server, current count:', mcpServers.length);
     await mcpServerManager.cleanup();
     // Clear the mcpServers array
     mcpServers.length = 0;
-    console.log('[routerAgent] MCP server cleaned up');
+    console.log('[routerAgent] MCP server cleaned up, servers cleared');
   } catch (error) {
     console.error('[routerAgent] Error cleaning up MCP server:', error);
   }

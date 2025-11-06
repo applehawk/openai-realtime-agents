@@ -15,18 +15,18 @@ const normalizeBaseUrl = (url: string | undefined): string | undefined => {
  * - На сервере (Node) используем AUTH_API_BASE (не public) — внутренний Docker hostname.
  * - В браузере используем NEXT_PUBLIC_AUTH_API_URL (public или относительный).
  */
-const getAuthApiBase = (): string => {
+const getAuthApiBase = (): string | undefined => {
   // серверная среда (Node) — используем AUTH_API_BASE
   if (typeof window === 'undefined') {
     const internal = normalizeBaseUrl(process.env.AUTH_API_BASE);
-    if (!internal) {
-      // fallback: если не задан AUTH_API_BASE, пробуем NEXT_PUBLIC (чтобы не сломать dev)
-      const fallback = normalizeBaseUrl(process.env.NEXT_PUBLIC_AUTH_API_URL || process.env.AUTH_API_BASE);
-      if (!fallback) {
-        throw new Error('AUTH_API_BASE is not set for server-side requests');
-      }
-      return fallback;
-    }
+    // if (!internal) {
+    //   // fallback: если не задан AUTH_API_BASE, пробуем NEXT_PUBLIC (чтобы не сломать dev)
+    //   const fallback = normalizeBaseUrl(process.env.NEXT_PUBLIC_AUTH_API_URL || process.env.AUTH_API_BASE);
+    //   if (!fallback) {
+    //     throw new Error('AUTH_API_BASE is not set for server-side requests');
+    //   }
+    //   return fallback;
+    // }
     return internal;
   }
 

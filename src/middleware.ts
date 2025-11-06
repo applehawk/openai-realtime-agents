@@ -4,24 +4,35 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
   const origin = request.headers.get('origin') || '';
   const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [];
+  const { pathname } = request.nextUrl;
 
   const response = NextResponse.next();
 
-  // Only apply CORS headers if there's an origin and it's in the allowed list
-  // For same-origin requests (like localhost to localhost), origin will be undefined
-  if (origin && allowedOrigins.length > 0 && allowedOrigins.includes(origin)) {
-    response.headers.set('Access-Control-Allow-Origin', origin);
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
+  // CORS headers only needed for cross-origin requests from browser
+  // Same-origin requests (e.g., localhost to localhost) don't need CORS
+  // Server-to-server requests (Next.js → backend) don't need CORS
+  if (pathname.startsWith('/api/') && origin && allowedOrigins.length > 0) {
+    if (allowedOrigins.includes(origin)) {
+      // Cross-origin request with allowed origin - add CORS headers
+      response.headers.set('Access-Control-Allow-Origin', origin);
+      response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      response.headers.set('Access-Control-Allow-Credentials', 'true');
+    }
   }
 
-  // Handle preflight requests
-  if (request.method === 'OPTIONS' && origin && allowedOrigins.includes(origin)) {
-    return new Response(null, { status: 200, headers: response.headers });
+  // Handle preflight OPTIONS requests (only for cross-origin)
+  if (request.method === 'OPTIONS' && pathname.startsWith('/api/') && origin && allowedOrigins.length > 0 && allowedOrigins.includes(origin)) {
+    return new Response(null, {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Credentials': 'true',
+      },
+    });
   }
-
-  const { pathname } = request.nextUrl;
 
   // Public paths that don't require authentication
   const publicPaths = ['/auth/login', '/auth/register', '/api/auth/login', '/api/auth/register'];
@@ -40,7 +51,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {

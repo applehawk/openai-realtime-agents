@@ -35,18 +35,15 @@ class MCPServerManager {
 
     // Create MCP server instance if not exists
     if (!this.mcpServer) {
-      // Determine the correct host based on environment
-      // - In Docker: use host.docker.internal to access host ports
-      // - In development: use localhost
-      // - In browser: MCP connection happens server-side, so this code runs in Node.js context
-      const isDocker = process.env.DOCKER_ENV === 'true' || process.env.NODE_ENV === 'production';
-      const host = isDocker ? 'host.docker.internal' : 'localhost';
-      const url = `http://${host}:${containerStatus.port}`;
-      console.log(`[MCPServerManager] Creating MCP server: ${url} (isDocker: ${isDocker}, NODE_ENV: ${process.env.NODE_ENV})`);
+      // MCP container binds to 0.0.0.0:8000 and is in the same oma-network
+      // Use container name directly for inter-container communication
+      const containerName = containerStatus.container_name || 'mcpgoogle';
+      const url = `http://${containerName}:8000/mcp`; // FastMCP SSE endpoint
+      console.log(`[MCPServerManager] Creating MCP server: ${url} (container: ${containerName})`);
 
       this.mcpServer = new MCPServerStreamableHttp({
         url,
-        name: containerStatus.container_name || 'mcpgoogle',
+        name: containerName,
         cacheToolsList: true, // Enable caching for better performance
       });
     }
@@ -121,6 +118,7 @@ class MCPServerManager {
    */
   async fetchAndInitialize(accessToken?: string): Promise<MCPServerStreamableHttp | null> {
     try {
+      console.log('[MCPServerManager] Fetching container status...');
       const headers: HeadersInit = {};
       if (accessToken) {
         headers['Authorization'] = `Bearer ${accessToken}`;
@@ -132,14 +130,30 @@ class MCPServerManager {
       });
 
       if (!response.ok) {
-        console.warn('[MCPServerManager] Failed to fetch container status:', response.statusText);
+        console.warn('[MCPServerManager] Failed to fetch container status:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url,
+        });
         return null;
       }
 
       const containerStatus: ContainerStatus = await response.json();
+      console.log('[MCPServerManager] Container status received:', {
+        running: containerStatus.running,
+        status: containerStatus.status,
+        port: containerStatus.port,
+        health: containerStatus.health,
+        containerName: containerStatus.container_name,
+      });
+
       return await this.initialize(containerStatus);
     } catch (error) {
-      console.error('[MCPServerManager] Error fetching container status:', error);
+      console.error('[MCPServerManager] Error fetching container status:', {
+        error,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       return null;
     }
   }

@@ -4,26 +4,30 @@ FROM node:20-alpine AS builder
 # Set working directory
 WORKDIR /app
 
-# Accept build arguments (only for public or build-time vars)
-ARG AUTH_API_BASE
+# Accept build arguments (only for NEXT_PUBLIC_* vars that need to be embedded in client bundle)
+# Server-side variables (AUTH_API_BASE, RAG_SERVER_URL, RAG_API_BASE_URL) are set at runtime
+# via docker-compose.yml environment section, not needed during build
 ARG NEXT_PUBLIC_AUTH_API_URL
-ARG RAG_SERVER_URL
-ARG RAG_API_BASE_URL
 
-# Set as environment variables for build
-ENV AUTH_API_BASE=${AUTH_API_BASE}
+# Set as environment variable for build (Next.js embeds NEXT_PUBLIC_* vars in client bundle)
 ENV NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL}
-ENV RAG_SERVER_URL=${RAG_SERVER_URL}
-ENV RAG_API_BASE_URL=${RAG_API_BASE_URL}
 
 # Copy package files
 COPY package*.json ./
 
 # Install dependencies
+# Using npm ci for faster, reliable, reproducible builds
+# Requires package-lock.json to be in sync with package.json
 RUN npm ci
 
 # Copy source code
 COPY . .
+
+# Remove Next.js cache to force fresh build
+RUN rm -rf .next
+
+# Disable Next.js build cache
+ENV NEXT_DISABLE_CACHE=1
 
 # Build the Next.js application
 RUN npm run build

@@ -50,7 +50,8 @@ updown:
 	@echo "Press Ctrl+C to stop the containers"
 	@echo "========================================"
 	@echo ""
-	docker compose up --build --force-recreate --remove-orphans -d
+	docker compose build --no-cache
+	docker compose up -d
 
 logs:
 	@echo "========================================"

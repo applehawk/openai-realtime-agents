@@ -152,6 +152,11 @@ function App() {
   }, [searchParams]);
 
   useEffect(() => {
+    console.log('[App] useEffect[selectedAgentName] triggered:', {
+      selectedAgentName,
+      sessionStatus,
+      willConnect: selectedAgentName && sessionStatus === "DISCONNECTED"
+    });
     if (selectedAgentName && sessionStatus === "DISCONNECTED") {
       connectToRealtime();
     }
@@ -198,17 +203,42 @@ function App() {
   };
 
   const connectToRealtime = async () => {
+    console.log('[App] connectToRealtime() called');
     const agentSetKey = searchParams.get("agentConfig") || "default";
+    console.log('[App] agentSetKey:', agentSetKey, 'in sdkScenarioMap:', !!sdkScenarioMap[agentSetKey]);
     if (sdkScenarioMap[agentSetKey]) {
-      if (sessionStatus !== "DISCONNECTED") return;
+      console.log('[App] Current sessionStatus:', sessionStatus);
+      if (sessionStatus !== "DISCONNECTED") {
+        console.warn('[App] Session not DISCONNECTED, aborting connection');
+        return;
+      }
 
       try {
         // Initialize MCP servers BEFORE creating the session
         console.log('[App] Initializing MCP servers before Realtime session...');
-        await initializeMCPServersBeforeAgent();
+        try {
+          const mcpInitSuccess = await initializeMCPServersBeforeAgent();
+          if (mcpInitSuccess) {
+            console.log('[App] MCP servers initialized successfully');
+          } else {
+            console.warn('[App] MCP server initialization returned false (container may not be ready yet)');
+          }
+        } catch (mcpError) {
+          console.error('[App] Failed to initialize MCP servers (non-fatal):', {
+            error: mcpError,
+            message: mcpError instanceof Error ? mcpError.message : String(mcpError),
+            stack: mcpError instanceof Error ? mcpError.stack : undefined,
+          });
+          // Continue with Realtime session even if MCP initialization fails
+        }
 
+        console.log('[App] Fetching ephemeral key...');
         const EPHEMERAL_KEY = await fetchEphemeralKey();
-        if (!EPHEMERAL_KEY) return;
+        if (!EPHEMERAL_KEY) {
+          console.error('[App] No ephemeral key received, aborting connection');
+          return;
+        }
+        console.log('[App] Ephemeral key received successfully');
 
         // Ensure the selectedAgentName is first so that it becomes the root
         const reorderedAgents = [...sdkScenarioMap[agentSetKey]];
@@ -217,7 +247,10 @@ function App() {
           const [agent] = reorderedAgents.splice(idx, 1);
           reorderedAgents.unshift(agent);
         }
+        console.log('[App] Agents reordered, root agent:', reorderedAgents[0]?.name);
+        console.log('[App] Total agents in scenario:', reorderedAgents.length);
 
+        console.log('[App] Calling connect() with SDK...');
         await connect({
           getEphemeralKey: async () => EPHEMERAL_KEY,
           initialAgents: reorderedAgents,
@@ -236,8 +269,13 @@ function App() {
           },
           model: "gpt-realtime",
         });
+        console.log('[App] connect() completed successfully');
       } catch (err) {
-        console.error("Error connecting via SDK:", err);
+        console.error("[App] Error connecting via SDK:", {
+          error: err,
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        });
         setSessionStatus("DISCONNECTED");
       }
       return;
