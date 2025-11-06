@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { mcpServerManager } from '@/app/agentConfigs/severstalAssistantAgent';
 
 interface ContainerStatus {
   status: string;
@@ -67,10 +66,24 @@ export default function TestMCPServer() {
     }
   };
 
-  const checkMCPConnection = () => {
-    const connected = mcpServerManager.isServerConnected();
-    setMcpConnected(connected);
-    addTestResult('Check MCP Connection', connected, connected ? 'MCP is connected' : 'MCP is not connected');
+  const checkMCPConnection = async () => {
+    try {
+      const response = await fetch('/api/mcp/status', {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setMcpConnected(data.connected);
+        addTestResult('Check MCP Connection', data.connected, data.connected ? 'MCP is connected' : 'MCP is not connected', data);
+      } else {
+        setMcpConnected(false);
+        addTestResult('Check MCP Connection', false, 'Failed to check MCP status');
+      }
+    } catch (error: any) {
+      setMcpConnected(false);
+      addTestResult('Check MCP Connection', false, `Error: ${error.message}`);
+    }
   };
 
   const handleStartContainer = async () => {
@@ -122,14 +135,18 @@ export default function TestMCPServer() {
   const handleInitializeMCP = async () => {
     setLoading(prev => ({ ...prev, init: true }));
     try {
-      const { initializeMCPServersBeforeAgent } = await import('@/app/agentConfigs/severstalAssistantAgent');
-      const success = await initializeMCPServersBeforeAgent();
+      const response = await fetch('/api/mcp/initialize', {
+        method: 'POST',
+        credentials: 'include',
+      });
 
-      if (success) {
-        addTestResult('Initialize MCP', true, 'MCP server initialized successfully');
-        checkMCPConnection();
+      if (response.ok) {
+        const data = await response.json();
+        addTestResult('Initialize MCP', true, 'MCP server initialized successfully', data);
+        await checkMCPConnection();
       } else {
-        addTestResult('Initialize MCP', false, 'Failed to initialize MCP server');
+        const error = await response.json();
+        addTestResult('Initialize MCP', false, `Failed: ${error.error || 'Unknown error'}`, error);
       }
     } catch (error: any) {
       addTestResult('Initialize MCP', false, `Error: ${error.message}`);

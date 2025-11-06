@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-const AUTH_API_BASE = process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/apib/v1/';
+// Use internal Docker network URL for server-side requests
+const AUTH_API_BASE = process.env.AUTH_API_BASE || 'http://multiagent_app:7000/api/v1';
 
 export async function GET(_request: NextRequest) {
   try {
@@ -16,7 +17,7 @@ export async function GET(_request: NextRequest) {
     }
 
     // Call backend to get Google status
-    const response = await fetch(`${AUTH_API_BASE}google/status`, {
+    const response = await fetch(`${AUTH_API_BASE}/google/status`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },
