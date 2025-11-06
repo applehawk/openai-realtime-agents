@@ -14,6 +14,7 @@ import { routerAgentPrompt } from '../prompts/routerPrompt';
 // Specialized agents for handoffs
 import { knowledgeAgent, setKnowledgeAgentHandoff } from './knowledgeAgent';
 import { interviewAgent, setInterviewAgentHandoff } from './interviewAgent';
+import { projectAgent, setProjectAgentHandoff } from './projectAgent';
 
 // Tools for direct execution and delegation
 import { delegateToIntelligentSupervisor } from '../tools/intelligentSupervisorTool'; // Unified supervisor
@@ -32,6 +33,7 @@ export const routerAgent = new RealtimeAgent({
   handoffs: [
     knowledgeAgent,    // ← Делегация для RAG поиска
     interviewAgent,    // ← Делегация для персонализации
+    projectAgent,      // ← Делегация для управления проектами
   ],
 
   // Tools для прямых вызовов и backend делегации
@@ -63,6 +65,7 @@ export const routerAgent = new RealtimeAgent({
 // Configure bidirectional handoffs (specialized agents can transfer back to router)
 setKnowledgeAgentHandoff(routerAgent);
 setInterviewAgentHandoff(routerAgent);
+setProjectAgentHandoff(routerAgent);
 
 // Export scenario array for compatibility
 export const routerScenario = [routerAgent];
