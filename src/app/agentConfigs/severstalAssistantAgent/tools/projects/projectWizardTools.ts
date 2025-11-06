@@ -46,54 +46,69 @@ export const projectWizard = tool({
       };
     }
 
-    // CREATE FLOW: name -> description -> manager -> team -> status -> create
+    // CREATE FLOW (устойчивый): применяем ответ к ожидаемому полю и вычисляем следующий незаполненный шаг
     if (mode === 'create') {
-      switch (currentQuestion) {
-        case '1':
-          state.name = userResponse?.trim();
-          if (!state.name) {
-            return next(1, 'Как назвать проект?', state);
+      const steps: { id: number; field: 'name' | 'description' | 'manager' | 'team' | 'status'; prompt: string }[] = [
+        { id: 1, field: 'name', prompt: 'Как назвать проект?' },
+        { id: 2, field: 'description', prompt: 'Коротко опишите проект (1-2 предложения).' },
+        { id: 3, field: 'manager', prompt: 'Кто руководитель проекта?' },
+        { id: 4, field: 'team', prompt: 'Какая команда участвует? (свободный формат)' },
+        { id: 5, field: 'status', prompt: 'Какой статус поставить? (Например: В планировании, В разработке, Завершен)' },
+      ];
+
+      const answered = (userResponse ?? '').trim();
+
+      // Определяем следующее незаполненное поле по состоянию (игнорируем присланный currentQuestion)
+      const nextMissing = steps.find(s => !state[s.field] || !String(state[s.field]).trim());
+
+      // Если все поля уже были заполнены ранее (редкий случай), перейдём к валидации/созданию
+      if (!nextMissing) {
+        // fallthrough в блок создания ниже
+      } else {
+        // Применяем текущий ответ к этому ожидаемому полю
+        state[nextMissing.field] = answered;
+      }
+
+      // После применения ответа, вычисляем следующий незаполненный шаг
+      const stillMissing = steps.find(s => !state[s.field] || !String(state[s.field]).trim());
+      if (stillMissing) {
+        // Если имя осталось пустым/слишком коротким, форсим вопрос 1
+        if (stillMissing.field === 'name') {
+          if (!state.name || String(state.name).trim().length < 2) {
+            return next(1, String(state.name).trim().length < 2 && state.name ? 'Название слишком короткое. Укажите название длиннее 2 символов.' : 'Как назвать проект?', state);
           }
-          return next(2, 'Коротко опишите проект (1-2 предложения).', state);
-        case '2':
-          // Если имя не было сохранено внешним состоянием, интерпретируем ответ как имя и остаёмся на шаге 2
-          if (!state.name || !String(state.name).trim()) {
-            state.name = userResponse?.trim();
-            if (!state.name) {
-              return next(1, 'Как назвать проект?', state);
-            }
-            return next(2, 'Коротко опишите проект (1-2 предложения).', state);
-          }
-          state.description = userResponse?.trim();
-          return next(3, 'Кто руководитель проекта?', state);
-        case '3':
-          state.manager = userResponse?.trim();
-          return next(4, 'Какая команда участвует? (свободный формат)', state);
-        case '4':
-          state.team = userResponse?.trim();
-          return next(5, 'Какой статус поставить? (Например: В планировании, В разработке, Завершен)', state);
-        case '5':
-          state.status = userResponse?.trim();
-          try {
-            const result = await mcpCreateProject(
-              { name: state.name, description: state.description, manager: state.manager, team: state.team, status: state.status },
-              userId,
-            );
-            if (!result.success) {
-              return { status: 'error', message: 'Не удалось создать проект. Попробуйте позже.', state };
-            }
-            return {
-              status: 'completed',
-              message: 'Проект создан успешно',
-              data: { id: result.projectId, name: state.name, status: state.status },
-              state,
-            };
-          } catch (e: any) {
-            return { status: 'error', message: `Ошибка создания: ${e.message}`, state };
-          }
-        default:
-          // старт
-          return next(1, 'Как назвать проект?', state);
+        }
+        return next(stillMissing.id, stillMissing.prompt, state);
+      }
+
+      // Все поля заполнены — валидация и создание
+      if (!String(state.name).trim()) {
+        return next(1, 'Как назвать проект?', state);
+      }
+      if (String(state.name).trim().length < 2) {
+        return next(1, 'Название слишком короткое. Укажите название длиннее 2 символов.', state);
+      }
+
+      try {
+        const existing = await mcpGetProject(state.name, userId);
+        if (existing && existing.id) {
+          return { status: 'error', message: `Проект с названием «${state.name}» уже существует. Уточните название или обновите существующий проект.`, state };
+        }
+        const result = await mcpCreateProject(
+          { name: state.name, description: state.description, manager: state.manager, team: state.team, status: state.status },
+          userId,
+        );
+        if (!result.success) {
+          return { status: 'error', message: 'Не удалось создать проект. Попробуйте позже.', state };
+        }
+        return {
+          status: 'completed',
+          message: 'Проект создан успешно',
+          data: { id: result.projectId, name: state.name, status: state.status },
+          state,
+        };
+      } catch (e: any) {
+        return { status: 'error', message: `Ошибка создания: ${e.message}`, state };
       }
     }
 
