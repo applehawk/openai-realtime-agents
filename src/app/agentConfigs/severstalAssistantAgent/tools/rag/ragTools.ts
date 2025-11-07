@@ -26,7 +26,7 @@ async function callRagServer(toolName: string, args: any) {
           arguments: args,
         },
       }),
-      signal: AbortSignal.timeout(30000), // 30 second timeout
+      signal: AbortSignal.timeout(30000), // 60 second timeout для медленных RAG запросов
     });
 
     if (!response.ok) {
@@ -49,7 +49,23 @@ async function callRagServer(toolName: string, args: any) {
     return JSON.stringify(data.result || data);
   } catch (error: any) {
     console.error(`[RAG] Error calling ${toolName}:`, error);
-    throw new Error(`Ошибка подключения к базе знаний: ${error.message}`);
+    console.error(`[RAG] Error details:`, {
+      name: error.name,
+      message: error.message,
+      status: error.status,
+    });
+
+    // Более информативное сообщение об ошибке
+    let errorMessage = error.message;
+    if (error.message.includes('timeout') || error.message.includes('aborted')) {
+      errorMessage = 'База знаний не отвечает. Возможно, сервер перегружен или недоступен. Попробуйте позже.';
+    } else if (error.message.includes('Failed to fetch') || error.message.includes('ECONNREFUSED')) {
+      errorMessage = 'Не удалось подключиться к базе знаний. Проверьте доступность сервера.';
+    } else if (error.message.includes('status')) {
+      errorMessage = `Ошибка базы знаний: ${error.message}`;
+    }
+
+    throw new Error(`Ошибка подключения к базе знаний: ${errorMessage}`);
   }
 }
 
