@@ -155,6 +155,28 @@ export default function TestMCPServer() {
     }
   };
 
+  const handleCheckMCPTools = async () => {
+    setLoading(prev => ({ ...prev, tools: true }));
+    try {
+      const containerName = containerStatus?.container_name || 'mcpgoogle';
+      const response = await fetch(`/api/mcp/tools?container=${containerName}`, {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        addTestResult('Check MCP Tools', true, `Found ${data.toolCount || 0} tools`, data);
+      } else {
+        const error = await response.json();
+        addTestResult('Check MCP Tools', false, `Failed: ${error.error || 'Unknown error'}`, error);
+      }
+    } catch (error: any) {
+      addTestResult('Check MCP Tools', false, `Error: ${error.message}`);
+    } finally {
+      setLoading(prev => ({ ...prev, tools: false }));
+    }
+  };
+
   const handleSendTestEmail = async () => {
     if (!emailTo) {
       alert('Please enter recipient email');
@@ -242,7 +264,7 @@ export default function TestMCPServer() {
         {/* Control Panel */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Controls</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <button
               onClick={loadContainerStatus}
               disabled={loading.status}
@@ -270,6 +292,15 @@ export default function TestMCPServer() {
               className="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded disabled:opacity-50"
             >
               {loading.init ? 'Initializing...' : 'Initialize MCP'}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-4">
+            <button
+              onClick={handleCheckMCPTools}
+              disabled={loading.tools || !containerStatus?.running}
+              className="bg-cyan-500 hover:bg-cyan-600 text-white font-semibold py-2 px-4 rounded disabled:opacity-50"
+            >
+              {loading.tools ? 'Checking...' : 'Check MCP Tools (Direct HTTP)'}
             </button>
           </div>
         </div>

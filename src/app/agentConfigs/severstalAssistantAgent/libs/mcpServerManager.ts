@@ -35,14 +35,25 @@ class MCPServerManager {
 
     // Create MCP server instance if not exists
     if (!this.mcpServer) {
-      // MCP container binds to 0.0.0.0:8000 and is in the same oma-network
-      // Use container name directly for inter-container communication
+      // CRITICAL: OpenAI Realtime API needs PUBLIC HTTPS URL to access MCP server
+      // Use nginx proxy path instead of direct port access
+      const publicDomain = typeof window !== 'undefined' ? window.location.hostname : 'rndaibot.ru';
+      const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'https' : 'https';
+
       const containerName = containerStatus.container_name || 'mcpgoogle';
-      const url = `http://${containerName}:8000/mcp`; // FastMCP SSE endpoint
-      console.log(`[MCPServerManager] Creating MCP server: ${url} (container: ${containerName})`);
+
+      // Extract username from container name: mcpgoogle-{username} -> {username}
+      const username = containerName.replace('mcpgoogle-', '');
+
+      // Use nginx proxy URL pattern: https://rndaibot.ru/mcp/{username}/
+      const publicUrl = `${protocol}://${publicDomain}/mcp/${username}/mcp`;
+
+      console.log(`[MCPServerManager] Creating MCP server with NGINX PROXY URL: ${publicUrl}`);
+      console.log(`[MCPServerManager] Container: ${containerName}, Username: ${username}`);
+      console.log(`[MCPServerManager] Traffic flow: OpenAI → nginx (SSL) → ${containerName}:8000`);
 
       this.mcpServer = new MCPServerStreamableHttp({
-        url,
+        url: publicUrl,
         name: containerName,
         cacheToolsList: true, // Enable caching for better performance
       });

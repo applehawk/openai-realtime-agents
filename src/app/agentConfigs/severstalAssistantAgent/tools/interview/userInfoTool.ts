@@ -1,7 +1,11 @@
 import { tool } from '@openai/agents/realtime';
 
 /**
- * Tool for getting current user information
+ * Tool for getting current user information from session context
+ *
+ * NOTE: User info is pre-fetched and included in the session context during connection.
+ * This tool simply returns the user info from context, avoiding async fetch issues
+ * with cookies and authentication in the Realtime API environment.
  */
 export const getCurrentUserInfo = tool({
   name: 'getCurrentUserInfo',
@@ -12,36 +16,42 @@ export const getCurrentUserInfo = tool({
     required: [],
     additionalProperties: false,
   },
-  execute: async (input: any) => {
-    try {
-      // Call the API endpoint to get user info
-      const response = await fetch('/api/auth/me', {
-        method: 'GET',
-        credentials: 'include',
-      });
+  execute: async (input: any, context: any) => {
+    console.log('[getCurrentUserInfo] Tool execution started');
+    console.log('[getCurrentUserInfo] Context available:', !!context);
 
-      if (!response.ok) {
+    try {
+      // Get user info from session context (pre-fetched during connection)
+      const currentUser = context?.currentUser;
+
+      if (!currentUser) {
+        console.warn('[getCurrentUserInfo] No user info in context');
         return {
           userId: null,
           username: null,
-          message: 'Пользователь не аутентифицирован',
+          email: null,
+          message: 'Информация о пользователе недоступна',
         };
       }
 
-      const user = await response.json();
-      
-      return {
-        userId: user.id,
-        username: user.username,
-        email: user.email,
+      const result = {
+        userId: currentUser.userId,
+        username: currentUser.username,
+        email: currentUser.email,
+        googleConnected: currentUser.googleConnected,
+        googleServices: currentUser.googleServices,
         position: 'Специалист', // Default position - will be updated during interview
-        message: 'Информация о пользователе получена',
+        message: 'Информация о пользователе получена из контекста сессии',
       };
+
+      console.log('[getCurrentUserInfo] Returning result from context:', result);
+      return result;
     } catch (error: any) {
-      console.error('[UserInfo] Error getting user info:', error);
+      console.error('[getCurrentUserInfo] Error getting user info:', error);
       return {
         userId: null,
         username: null,
+        email: null,
         message: `Ошибка получения информации о пользователе: ${error.message}`,
       };
     }

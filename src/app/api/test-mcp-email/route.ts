@@ -37,10 +37,19 @@ export async function POST(request: NextRequest) {
       console.log('[test-mcp-email] Available MCP tools:', tools.map((t: any) => t.name));
 
       // Find email sending tool
-      const emailTool = tools.find((t: any) =>
-        t.name.toLowerCase().includes('send') && t.name.toLowerCase().includes('email') ||
-        t.name.toLowerCase().includes('gmail')
-      );
+      // Prefer exact match first, then case-insensitive contains, then a safer fallback
+      const emailTool =
+        tools.find((t: any) => t.name === 'gmail_send_message') ||
+        tools.find((t: any) => typeof t.name === 'string' && t.name.toLowerCase() === 'gmail_send_message') ||
+        tools.find((t: any) => typeof t.name === 'string' && t.name.toLowerCase().includes('gmail_send_message')) ||
+        // fallback: contains gmail OR (contains send AND contains email) -- with correct parentheses
+        tools.find(
+          (t: any) =>
+            typeof t.name === 'string' &&
+            (t.name.toLowerCase().includes('gmail') ||
+              (t.name.toLowerCase().includes('send') && t.name.toLowerCase().includes('email')))
+        );
+
 
       if (!emailTool) {
         return NextResponse.json(

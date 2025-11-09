@@ -11,13 +11,6 @@ export const executorAgent = new Agent({
   name: 'ExecutorAgent',
   model: 'gpt-4o',
   instructions: executorAgentInstructions,
-  tools: [
-    // Calendar MCP for email and calendar operations
-    hostedMcpTool({
-      serverLabel: 'calendar',
-      serverUrl: 'https://rndaibot.app.n8n.cloud/mcp/google_my_account',
-    }),
-  ],
 });
 
 // Log agent initialization

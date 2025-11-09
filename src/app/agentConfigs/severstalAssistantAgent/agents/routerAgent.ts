@@ -17,15 +17,17 @@ import { interviewAgent, setInterviewAgentHandoff } from './interviewAgent';
 // Tools for direct execution and delegation
 import { delegateToIntelligentSupervisor } from '../tools/intelligentSupervisorTool'; // Unified supervisor
 import { getTaskContext } from '../tools/getTaskContextTool';
-import { getCurrentUserInfo } from '../tools/interview/userInfoTool';
+// import { getCurrentUserInfo } from '../tools/interview/userInfoTool'; // DISABLED - see tools array
 import { updateUserPreferences } from '../tools/rag/userPreferencesTool';
 import { manageUserInterview } from '../tools/interview/interviewTools';
 
 // MCP Server Manager for initialization
 import { mcpServerManager } from '../libs/mcpServerManager';
 
-// MCP servers array that will be populated before agent creation
-export const mcpServers: any[] = [];
+// export const mcpServer = new MCPServerStreamableHttp({
+//   url: 'http://mcpgoogle-mr.vasilenko.vlad1:8000/mcp',
+//   name: 'Google Services (Gmail / Calendar)',
+// });
 
 export const routerAgent = new RealtimeAgent({
   name: 'routerAgent',
@@ -38,13 +40,14 @@ export const routerAgent = new RealtimeAgent({
     interviewAgent,    // ← Делегация для персонализации
   ],
 
-  // MCP Servers (будут добавлены через initializeMCPServersBeforeAgent)
-  mcpServers,
+  mcpServers: [],
 
   // Tools для прямых вызовов и backend делегации
   tools: [
+    // NOTE: getCurrentUserInfo removed - user info is passed in initial message context
+    // getCurrentUserInfo, // <-- DISABLED: tools execute on OpenAI server, can't access browser cookies
+
     // User info tools для проверки статуса интервью
-    getCurrentUserInfo,
     manageUserInterview, // ← Универсальный инструмент для управления интервью и получения предпочтений
     updateUserPreferences, // ← Обновление предпочтений пользователя
 
@@ -53,6 +56,13 @@ export const routerAgent = new RealtimeAgent({
 
     // Task context для получения состояния выполняемых задач
     getTaskContext, // ← Получить состояние задачи по sessionId
+    // Note: MCP tools are loaded dynamically via initializeMCPServersBeforeAgent()
+    // This hostedMcpTool is commented out to avoid conflicts
+    // hostedMcpTool({
+    //   serverLabel: 'mcp',
+    //   serverUrl: 'http://mcpgoogle-mr.vasilenko.vlad:8000/mcp',
+    //   requireApproval: 'never'
+    // }),
   ],
 });
 
@@ -67,10 +77,10 @@ setInterviewAgentHandoff(routerAgent);
 export async function initializeMCPServersBeforeAgent(accessToken?: string): Promise<boolean> {
   try {
     console.log('[routerAgent] Initializing MCP servers before agent creation...');
-    console.log('[routerAgent] Current MCP servers count:', mcpServers.length);
+    console.log('[routerAgent] Current MCP servers count:', routerAgent.mcpServers.length);
 
     // Check if MCP server is already initialized to prevent duplicates
-    if (mcpServers.length > 0) {
+    if (routerAgent.mcpServers.length > 0) {
       console.log('[routerAgent] MCP server already initialized, skipping re-initialization');
       return true;
     }
@@ -79,8 +89,23 @@ export async function initializeMCPServersBeforeAgent(accessToken?: string): Pro
 
     if (mcpServer) {
       // Add to the mcpServers array that agent references
-      mcpServers.push(mcpServer);
-      console.log('[routerAgent] MCP server initialized successfully, total count:', mcpServers.length);
+      routerAgent.mcpServers = [mcpServer];
+      console.log('[routerAgent] MCP server initialized successfully, total count:', routerAgent.mcpServers.length);
+
+      // Verify connection status
+      const isConnected = mcpServerManager.isServerConnected();
+      console.log('[routerAgent] MCP server connection verified:', isConnected);
+
+      if (!isConnected) {
+        console.error('[routerAgent] MCP server instance created but not connected!');
+        return false;
+      }
+
+      // Note: listTools() is not available on client-side MCPServerStreamableHttp
+      // The MCP server URL is passed to OpenAI Realtime API which calls tools directly
+      // To list tools for diagnostics, use /api/mcp/tools server endpoint
+      console.log('[routerAgent] ✅ MCP server ready for OpenAI Realtime API');
+
       return true;
     } else {
       console.warn('[routerAgent] Failed to initialize MCP server (null returned, container may not be ready)');
@@ -101,10 +126,12 @@ export async function initializeMCPServersBeforeAgent(accessToken?: string): Pro
  */
 export async function cleanupMCPServer(): Promise<void> {
   try {
-    console.log('[routerAgent] Cleaning up MCP server, current count:', mcpServers.length);
+    console.log('[routerAgent] Cleaning up MCP server, current count:', routerAgent.mcpServers.length);
     await mcpServerManager.cleanup();
     // Clear the mcpServers array
-    mcpServers.length = 0;
+    routerAgent.mcpServers.length = 0;
+    routerAgent.mcpServers = []
+
     console.log('[routerAgent] MCP server cleaned up, servers cleared');
   } catch (error) {
     console.error('[routerAgent] Error cleaning up MCP server:', error);
@@ -115,5 +142,5 @@ export async function cleanupMCPServer(): Promise<void> {
 export { mcpServerManager };
 
 // Export scenario array for compatibility
-export const routerScenario = [routerAgent];
+export const routerScenario = routerAgent;
 export default routerScenario;
