@@ -58,6 +58,7 @@ import {
 } from '../taskTypes';
 import { progressEmitter, ProgressUpdate } from './progressEmitter';
 import { taskContextStore } from './taskContextStore';
+import { hitlStore } from './hitlStore';
 import {
   WORD_LIMITS,
   SENTENCE_LIMITS,
@@ -636,9 +637,11 @@ Execute this multi-step workflow using MCP tools. Provide comprehensive results 
 
   /**
    * Generate plan without execution (PLAN FIRST mode) using TaskPlannerAgent (v3.0)
-   * 
+   *
    * v3.0: Now uses specialized TaskPlannerAgent for high-quality plan generation
    * Token savings: ~2150 tokens per call (vs supervisorAgent)
+   *
+   * v4.0 (HITL): Added Human-in-the-Loop for plan approval
    */
   private async generatePlan(
     request: UnifiedRequest,
@@ -679,13 +682,59 @@ Generate detailed execution plan WITHOUT executing. Present plan to user for con
         requiresConfirmation: plan.requiresUserConfirmation,
       });
 
+      // Format plan for display
+      const planContent = plan.plannedSteps
+        ? plan.plannedSteps.map((step: string, idx: number) => `${idx + 1}. ${step}`).join('\n')
+        : 'План не сформирован';
+
+      // v4.0 HITL: Request user approval for the plan
+      const { approval: hitlApproval, promise: approvalPromise } = hitlStore.createApproval(
+        this.sessionId,
+        'PLAN_APPROVAL',
+        'Пожалуйста, проверьте и утвердите план выполнения задачи. Вы можете отредактировать шаги перед утверждением.',
+        planContent,
+        {
+          complexity,
+          strategy,
+          estimatedSteps: plan.plannedSteps?.length || 0,
+          estimatedTime: plan.estimatedTime,
+        }
+      );
+
+      // Emit HITL request with the same itemId
+      this.emitProgress('hitl_request', 'Ожидание утверждения плана...', 50, {
+        hitlData: {
+          itemId: hitlApproval.itemId,
+          type: 'PLAN_APPROVAL' as const,
+          question: hitlApproval.question,
+          content: hitlApproval.content,
+          metadata: hitlApproval.metadata,
+        },
+      });
+
+      // Wait for user decision
+      const approval = await approvalPromise;
+
+      console.log('[IntelligentSupervisor] Plan approval received:', approval.resolution);
+
+      this.emitProgress('hitl_resolved', `План ${approval.resolution?.decision === 'approved' ? 'утвержден' : 'отклонен'}`, 60);
+
+      if (approval.resolution?.decision === 'rejected') {
+        throw new Error(`План отклонен пользователем: ${approval.resolution.feedback || 'Без комментариев'}`);
+      }
+
+      // If plan was modified, update it
+      const finalPlan = approval.resolution?.modifiedContent
+        ? approval.resolution.modifiedContent.split('\n').filter((line: string) => line.trim())
+        : plan.plannedSteps;
+
       return {
         strategy,
         complexity,
-        nextResponse: plan.nextResponse || 'План составлен',
+        nextResponse: plan.nextResponse || 'План составлен и утвержден',
         workflowSteps: [],
-        plannedSteps: plan.plannedSteps || [],
-        progress: { current: 0, total: plan.plannedSteps?.length || 0 },
+        plannedSteps: Array.isArray(finalPlan) ? finalPlan : [finalPlan],
+        progress: { current: 0, total: Array.isArray(finalPlan) ? finalPlan.length : 1 },
         executionTime: 0,
       };
     } catch (error) {
@@ -696,6 +745,7 @@ Generate detailed execution plan WITHOUT executing. Present plan to user for con
 
   /**
    * Helper: Breakdown task using supervisorAgent (for hierarchical execution)
+   * v4.0 (HITL): Added Human-in-the-Loop for decomposition decision approval
    */
   private async breakdownTaskWithSupervisor(
     request: TaskBreakdownRequest
@@ -781,12 +831,77 @@ OR (редко!):
       }
 
       const decision = JSON.parse(jsonMatch[0]);
-      
+
       console.log('[IntelligentSupervisor] DecisionAgent decision:', {
         shouldBreakdown: decision.shouldBreakdown,
         reasoning: decision.reasoning,
         subtasksCount: decision.subtasks?.length || 0,
       });
+
+      // v4.0 HITL: If agent suggests breakdown, ask user for confirmation
+      if (decision.shouldBreakdown && decision.subtasks && decision.subtasks.length > 0) {
+        const subtasksContent = decision.subtasks
+          .map((st: any, idx: number) => `${idx + 1}. ${st.description} (сложность: ${st.estimatedComplexity || 'unknown'})`)
+          .join('\n');
+
+        const decisionContent = `Агент рекомендует разбить задачу на подзадачи:\n\nОбоснование: ${decision.reasoning}\n\nПодзадачи:\n${subtasksContent}`;
+
+        // Create HITL approval
+        const { approval: hitlApproval, promise: approvalPromise } = hitlStore.createApproval(
+          this.sessionId,
+          'DECOMPOSITION_DECISION',
+          'Агент предлагает разбить задачу на подзадачи. Вы согласны с этим решением?',
+          decisionContent,
+          {
+            taskDescription: task.description,
+            level: task.level,
+            estimatedSubtasks: decision.subtasks.length,
+            reasoning: decision.reasoning,
+          }
+        );
+
+        // Emit HITL request with the same itemId
+        this.emitProgress('hitl_request', 'Ожидание подтверждения декомпозиции...', 45, {
+          hitlData: {
+            itemId: hitlApproval.itemId,
+            type: 'DECOMPOSITION_DECISION' as const,
+            question: hitlApproval.question,
+            content: hitlApproval.content,
+            metadata: hitlApproval.metadata,
+          },
+        });
+
+        // Wait for user decision
+        const approval = await approvalPromise;
+
+        console.log('[IntelligentSupervisor] Decomposition approval received:', approval.resolution);
+
+        this.emitProgress('hitl_resolved', `Декомпозиция ${approval.resolution?.decision === 'approved' ? 'утверждена' : 'отклонена'}`, 50);
+
+        if (approval.resolution?.decision === 'rejected') {
+          // User rejected breakdown - execute directly
+          console.log('[IntelligentSupervisor] User rejected breakdown, executing directly');
+          return {
+            shouldBreakdown: false,
+            reasoning: `Пользователь отклонил декомпозицию: ${approval.resolution.feedback || 'Без комментариев'}`,
+            directExecution: { canExecuteDirectly: true, executor: 'supervisor' },
+          };
+        }
+
+        // User approved - proceed with breakdown (potentially modified)
+        if (approval.resolution?.modifiedContent) {
+          // Parse modified subtasks if user edited them
+          const modifiedLines = approval.resolution.modifiedContent.split('\n').filter((line: string) => line.trim() && line.match(/^\d+\./));
+          if (modifiedLines.length > 0) {
+            decision.subtasks = modifiedLines.map((line: string) => ({
+              description: line.replace(/^\d+\.\s*/, '').split('(сложность')[0].trim(),
+              estimatedComplexity: 'moderate',
+              dependencies: [],
+            }));
+            console.log('[IntelligentSupervisor] Using modified subtasks:', decision.subtasks);
+          }
+        }
+      }
 
       return decision;
     } catch (error) {

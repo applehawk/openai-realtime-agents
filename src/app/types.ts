@@ -60,21 +60,36 @@ export type AllAgentConfigsType = Record<string, AgentConfig[]>;
 
 export interface GuardrailResultType {
   status: "IN_PROGRESS" | "DONE";
-  testText?: string; 
+  testText?: string;
   category?: ModerationCategory;
   rationale?: string;
 }
 
+export interface HITLApprovalData {
+  type: "PLAN_APPROVAL" | "DECOMPOSITION_DECISION";
+  question: string;
+  originalContent: string; // Original plan or decision
+  editableContent: string; // User can edit this
+  metadata?: {
+    complexity?: string;
+    estimatedSteps?: number;
+    reasoning?: string;
+    [key: string]: any;
+  };
+  decision?: "approved" | "rejected" | "modified";
+  userFeedback?: string;
+}
+
 export interface TranscriptItem {
   itemId: string;
-  type: "MESSAGE" | "BREADCRUMB" | "TASK_PROGRESS";
+  type: "MESSAGE" | "BREADCRUMB" | "TASK_PROGRESS" | "HITL_APPROVAL";
   role?: "user" | "assistant";
   title?: string;
   data?: Record<string, any>;
   expanded: boolean;
   timestamp: string;
   createdAtMs: number;
-  status: "IN_PROGRESS" | "DONE";
+  status: "IN_PROGRESS" | "DONE" | "WAITING_APPROVAL" | "APPROVED" | "REJECTED";
   isHidden: boolean;
   guardrailResult?: GuardrailResultType;
   // For TASK_PROGRESS type:
@@ -82,6 +97,9 @@ export interface TranscriptItem {
   progress?: number; // 0-100
   progressMessage?: string;
   progressUpdates?: any[]; // Array of progress updates
+  // For HITL_APPROVAL type:
+  hitlType?: "PLAN_APPROVAL" | "DECOMPOSITION_DECISION";
+  hitlData?: HITLApprovalData;
 }
 
 export interface Log {

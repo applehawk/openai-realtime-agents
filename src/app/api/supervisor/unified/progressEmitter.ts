@@ -15,13 +15,21 @@ import { EventEmitter } from 'events';
  */
 export interface ProgressUpdate {
   sessionId: string;
-  type: 'started' | 'delegation_review' | 'delegate_back' | 'complexity_assessed' | 'strategy_selected' | 'step_started' | 'step_completed' | 'completed' | 'error';
+  type: 'started' | 'delegation_review' | 'delegate_back' | 'complexity_assessed' | 'strategy_selected' | 'step_started' | 'step_completed' | 'completed' | 'error' | 'hitl_request' | 'hitl_resolved';
   message: string;
   progress: number; // 0-100
   currentStep?: number;
   totalSteps?: number;
   details?: any;
   timestamp: number;
+  // For HITL requests
+  hitlData?: {
+    itemId: string;
+    type: 'PLAN_APPROVAL' | 'DECOMPOSITION_DECISION';
+    question: string;
+    content: string;
+    metadata?: any;
+  };
 }
 
 /**

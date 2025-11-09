@@ -16,13 +16,20 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 
 export interface ProgressUpdate {
   sessionId: string;
-  type: 'connected' | 'started' | 'complexity_assessed' | 'strategy_selected' | 'step_started' | 'step_completed' | 'completed' | 'error';
+  type: 'connected' | 'started' | 'complexity_assessed' | 'strategy_selected' | 'step_started' | 'step_completed' | 'completed' | 'error' | 'hitl_request' | 'hitl_resolved';
   message: string;
   progress: number;
   currentStep?: number;
   totalSteps?: number;
   details?: any;
   timestamp: number;
+  hitlData?: {
+    itemId: string;
+    type: 'PLAN_APPROVAL' | 'DECOMPOSITION_DECISION';
+    question: string;
+    content: string;
+    metadata?: any;
+  };
 }
 
 export interface TaskProgressState {
@@ -89,7 +96,12 @@ export function useTaskProgress(sessionId: string | null): TaskProgressState {
     eventSource.onmessage = (event) => {
       try {
         const update: ProgressUpdate = JSON.parse(event.data);
-        console.log('[useTaskProgress] Update:', update);
+        console.log('[useTaskProgress] SSE Update received:', {
+          type: update.type,
+          hasHitlData: !!update.hitlData,
+          hitlType: update.hitlData?.type,
+          message: update.message
+        });
         handleUpdate(update);
       } catch (error) {
         console.error('[useTaskProgress] Parse error:', error);

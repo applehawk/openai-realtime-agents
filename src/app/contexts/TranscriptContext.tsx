@@ -22,6 +22,8 @@ type TranscriptContextValue = {
   addTranscriptBreadcrumb: (title: string, data?: Record<string, any>) => void;
   addTaskProgressMessage: (sessionId: string, taskDescription: string) => void;
   updateTaskProgress: (sessionId: string, progress: number, message: string, details?: any) => void;
+  addHITLApproval: (sessionId: string, hitlType: "PLAN_APPROVAL" | "DECOMPOSITION_DECISION", question: string, content: string, metadata?: any) => void;
+  updateHITLApproval: (itemId: string, status: "APPROVED" | "REJECTED", decision: "approved" | "rejected" | "modified", modifiedContent?: string, feedback?: string) => void;
   toggleTranscriptItemExpand: (itemId: string) => void;
   updateTranscriptItem: (itemId: string, updatedProperties: Partial<TranscriptItem>) => void;
   activeSessionId: string | null;
@@ -180,6 +182,56 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
     );
   };
 
+  const addHITLApproval: TranscriptContextValue["addHITLApproval"] = (sessionId, hitlType, question, content, metadata) => {
+    console.log('[TranscriptContext] Creating HITL approval request:', { sessionId, hitlType });
+
+    setTranscriptItems((prev) => [
+      ...prev,
+      {
+        itemId: `hitl-${sessionId}-${Date.now()}`,
+        type: "HITL_APPROVAL",
+        role: "assistant",
+        title: hitlType === "PLAN_APPROVAL" ? "Утверждение плана" : "Решение о декомпозиции",
+        sessionId,
+        hitlType,
+        hitlData: {
+          type: hitlType,
+          question,
+          originalContent: content,
+          editableContent: content,
+          metadata,
+        },
+        expanded: false,
+        timestamp: newTimestampPretty(),
+        createdAtMs: Date.now(),
+        status: "WAITING_APPROVAL",
+        isHidden: false,
+      },
+    ]);
+  };
+
+  const updateHITLApproval: TranscriptContextValue["updateHITLApproval"] = (itemId, status, decision, modifiedContent, feedback) => {
+    console.log('[TranscriptContext] Updating HITL approval:', { itemId, status, decision });
+
+    setTranscriptItems((prev) =>
+      prev.map((item) => {
+        if (item.itemId === itemId && item.type === "HITL_APPROVAL" && item.hitlData) {
+          return {
+            ...item,
+            status,
+            hitlData: {
+              ...item.hitlData,
+              decision,
+              editableContent: modifiedContent || item.hitlData.editableContent,
+              userFeedback: feedback,
+            },
+          };
+        }
+        return item;
+      })
+    );
+  };
+
   return (
     <TranscriptContext.Provider
       value={{
@@ -189,6 +241,8 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
         addTranscriptBreadcrumb,
         addTaskProgressMessage,
         updateTaskProgress,
+        addHITLApproval,
+        updateHITLApproval,
         toggleTranscriptItemExpand,
         updateTranscriptItem,
         activeSessionId,

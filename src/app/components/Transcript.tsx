@@ -8,6 +8,7 @@ import { DownloadIcon, ClipboardCopyIcon } from "@radix-ui/react-icons";
 import { Message } from "./Message";
 import { Breadcrumb } from "./Breadcrumb";
 import { TaskProgressMessage } from "./TaskProgressMessage";
+import { HITLApprovalWidget } from "./HITLApprovalWidget";
 
 export interface TranscriptProps {
   userText: string;
@@ -24,7 +25,7 @@ function Transcript({
   canSend,
   downloadRecording,
 }: TranscriptProps) {
-  const { transcriptItems, toggleTranscriptItemExpand } = useTranscript();
+  const { transcriptItems, toggleTranscriptItemExpand, updateHITLApproval } = useTranscript();
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const [prevLogs, setPrevLogs] = useState<TranscriptItem[]>([]);
   const [justCopied, setJustCopied] = useState(false);
@@ -68,6 +69,56 @@ function Transcript({
       setTimeout(() => setJustCopied(false), 1500);
     } catch (error) {
       console.error("Failed to copy transcript:", error);
+    }
+  };
+
+  const handleHITLApprove = async (itemId: string, modifiedContent?: string, feedback?: string) => {
+    try {
+      const item = transcriptItems.find(t => t.itemId === itemId);
+      if (!item || !item.sessionId) return;
+
+      const decision = modifiedContent ? "modified" : "approved";
+
+      // Update UI immediately
+      updateHITLApproval(itemId, "APPROVED", decision, modifiedContent, feedback);
+
+      // Send approval to backend
+      await fetch("/api/supervisor/unified/hitl/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: item.sessionId,
+          itemId,
+          decision,
+          modifiedContent,
+          feedback,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to approve HITL:", error);
+    }
+  };
+
+  const handleHITLReject = async (itemId: string, feedback: string) => {
+    try {
+      const item = transcriptItems.find(t => t.itemId === itemId);
+      if (!item || !item.sessionId) return;
+
+      // Update UI immediately
+      updateHITLApproval(itemId, "REJECTED", "rejected", undefined, feedback);
+
+      // Send rejection to backend
+      await fetch("/api/supervisor/unified/hitl/reject", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: item.sessionId,
+          itemId,
+          feedback,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to reject HITL:", error);
     }
   };
 
@@ -154,6 +205,20 @@ function Transcript({
                     initialMessage={item.progressMessage || 'Инициализация задачи...'}
                   />
                 </div>
+              );
+            } else if (type === "HITL_APPROVAL" && item.hitlData) {
+              // Render HITL approval widget
+              return (
+                <HITLApprovalWidget
+                  key={itemId}
+                  itemId={itemId}
+                  sessionId={item.sessionId || ''}
+                  timestamp={timestamp}
+                  hitlData={item.hitlData}
+                  status={item.status as "WAITING_APPROVAL" | "APPROVED" | "REJECTED"}
+                  onApprove={handleHITLApprove}
+                  onReject={handleHITLReject}
+                />
               );
             } else {
               // Fallback if type is unknown

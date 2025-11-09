@@ -33,16 +33,21 @@ export function TaskProgressMessage({
   initialMessage = 'Инициализация задачи...',
   hierarchicalBreakdown,
 }: TaskProgressMessageProps) {
-  const { updateTaskProgress } = useTranscript();
+  const { updateTaskProgress, addHITLApproval } = useTranscript();
   const { progress, message, isComplete, error, updates } = useTaskProgress(sessionId);
   const [taskTree, setTaskTree] = useState<TaskNode | undefined>(hierarchicalBreakdown);
+  const [processedHITLs, setProcessedHITLs] = useState<Set<string>>(new Set());
+  const [lastProgress, setLastProgress] = useState({ progress: 0, message: '' });
 
   // Update transcript context when progress changes
   useEffect(() => {
-    if (progress > 0 || message) {
+    // Only update if progress or message actually changed
+    if ((progress > 0 || message) &&
+        (progress !== lastProgress.progress || message !== lastProgress.message)) {
       updateTaskProgress(sessionId, progress, message || initialMessage);
+      setLastProgress({ progress, message });
     }
-  }, [progress, message, sessionId, updateTaskProgress, initialMessage]);
+  }, [progress, message, sessionId, initialMessage]); // Removed updateTaskProgress from deps
 
   // Extract task tree from progress updates
   useEffect(() => {
@@ -62,6 +67,37 @@ export function TaskProgressMessage({
       }
     }
   }, [updates]);
+
+  // Handle HITL requests from progress updates
+  useEffect(() => {
+    console.log('[TaskProgressMessage] Checking updates, count:', updates.length, 'sessionId:', sessionId);
+
+    for (const update of updates) {
+      console.log('[TaskProgressMessage] Update:', update.type, 'hitlData?', !!update.hitlData);
+
+      if (update.type === 'hitl_request' && update.hitlData) {
+        const itemId = update.hitlData.itemId;
+
+        // Check if we already processed this HITL request
+        if (!processedHITLs.has(itemId)) {
+          console.log('[TaskProgressMessage] ✅ NEW HITL request received:', update.hitlData);
+
+          addHITLApproval(
+            sessionId,
+            update.hitlData.type,
+            update.hitlData.question,
+            update.hitlData.content,
+            update.hitlData.metadata
+          );
+
+          // Mark as processed
+          setProcessedHITLs(prev => new Set(prev).add(itemId));
+        } else {
+          console.log('[TaskProgressMessage] ⏭️ Already processed:', itemId);
+        }
+      }
+    }
+  }, [updates, sessionId]); // Removed addHITLApproval and processedHITLs from deps
 
   const displayProgress = progress || initialProgress;
   const displayMessage = message || initialMessage;
