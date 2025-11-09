@@ -8,17 +8,19 @@
  */
 
 import { RealtimeAgent } from '@openai/agents/realtime';
+import { hostedMcpTool } from '@openai/agents';
 import { routerAgentPrompt } from '../prompts/routerPrompt';
 
 // Specialized agents for handoffs
 import { knowledgeAgent, setKnowledgeAgentHandoff } from './knowledgeAgent';
 import { interviewAgent, setInterviewAgentHandoff } from './interviewAgent';
+import { projectAgent, setProjectAgentHandoff } from './projectAgent';
 
 // Tools for direct execution and delegation
 import { delegateToIntelligentSupervisor } from '../tools/intelligentSupervisorTool'; // Unified supervisor
 import { getTaskContext } from '../tools/getTaskContextTool';
 // import { getCurrentUserInfo } from '../tools/interview/userInfoTool'; // DISABLED - see tools array
-import { updateUserPreferences } from '../tools/rag/userPreferencesTool';
+import { updateUserPreferences, queryUserPreferences } from '../tools/rag/userPreferencesTool';
 import { manageUserInterview } from '../tools/interview/interviewTools';
 
 // MCP Server Manager for initialization
@@ -28,6 +30,8 @@ import { mcpServerManager } from '../libs/mcpServerManager';
 //   url: 'http://mcpgoogle-mr.vasilenko.vlad1:8000/mcp',
 //   name: 'Google Services (Gmail / Calendar)',
 // });
+import { getCurrentUserInfo } from '../tools/interview/userInfoTool';
+import { updateUserPreferencesTool, detectPreferenceUpdateRequest } from '../tools/preferences/updatePreferencesTool';
 
 export const routerAgent = new RealtimeAgent({
   name: 'routerAgent',
@@ -38,37 +42,43 @@ export const routerAgent = new RealtimeAgent({
   handoffs: [
     knowledgeAgent,    // ← Делегация для RAG поиска
     interviewAgent,    // ← Делегация для персонализации
+    projectAgent,      // ← Делегация для управления проектами
   ],
 
   mcpServers: [],
 
   // Tools для прямых вызовов и backend делегации
   tools: [
-    // NOTE: getCurrentUserInfo removed - user info is passed in initial message context
-    // getCurrentUserInfo, // <-- DISABLED: tools execute on OpenAI server, can't access browser cookies
+    // MCP Server (внешний сервис для email/calendar, возврат через response)
+    hostedMcpTool({
+      serverLabel: 'calendar',
+      serverUrl: 'https://rndaibot.app.n8n.cloud/mcp/google_my_account',
+    }),
 
     // User info tools для проверки статуса интервью
+    getCurrentUserInfo,
     manageUserInterview, // ← Универсальный инструмент для управления интервью и получения предпочтений
+    queryUserPreferences, // ← Запрос предпочтений пользователя
     updateUserPreferences, // ← Обновление предпочтений пользователя
+    
+    // Новые инструменты для обновления предпочтений через естественную речь
+    detectPreferenceUpdateRequest, // ← Анализ запроса на изменение предпочтений
+    updateUserPreferencesTool, // ← Обновление предпочтений по категориям
 
     // Backend agent для всех многошаговых задач
     delegateToIntelligentSupervisor, // ← Unified intelligent supervisor (Path 4)
-
+    
     // Task context для получения состояния выполняемых задач
     getTaskContext, // ← Получить состояние задачи по sessionId
+    
     // Note: MCP tools are loaded dynamically via initializeMCPServersBeforeAgent()
-    // This hostedMcpTool is commented out to avoid conflicts
-    // hostedMcpTool({
-    //   serverLabel: 'mcp',
-    //   serverUrl: 'http://mcpgoogle-mr.vasilenko.vlad:8000/mcp',
-    //   requireApproval: 'never'
-    // }),
   ],
 });
 
 // Configure bidirectional handoffs (specialized agents can transfer back to router)
 setKnowledgeAgentHandoff(routerAgent);
 setInterviewAgentHandoff(routerAgent);
+setProjectAgentHandoff(routerAgent);
 
 /**
  * Initialize MCP servers BEFORE creating the agent
@@ -142,5 +152,5 @@ export async function cleanupMCPServer(): Promise<void> {
 export { mcpServerManager };
 
 // Export scenario array for compatibility
-export const routerScenario = routerAgent;
+export const routerScenario = [routerAgent];
 export default routerScenario;

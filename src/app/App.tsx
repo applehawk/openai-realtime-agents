@@ -142,7 +142,7 @@ function App() {
     // Set default agent name for severstalAssistant
     const agentKeyToUse = 'routerAgent';
     setSelectedAgentName(agentKeyToUse);
-    setSelectedAgentConfigSet([chatSeverstalAssistantScenario]);
+    setSelectedAgentConfigSet(chatSeverstalAssistantScenario);
   }, []);
 
   useEffect(() => {
@@ -264,7 +264,7 @@ function App() {
 
       await connect({
         getEphemeralKey: async () => EPHEMERAL_KEY,
-        initialAgents: [chatSeverstalAssistantScenario],
+        initialAgents: chatSeverstalAssistantScenario,
         audioElement: sdkAudioElement,
         outputGuardrails: [],
         extraContext: {

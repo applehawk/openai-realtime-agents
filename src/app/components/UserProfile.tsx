@@ -182,7 +182,6 @@ export default function UserProfile() {
 
   const handleStartContainer = async () => {
     setIsContainerLoading(true);
-
     try {
       const response = await fetch('/api/containers/start', {
         method: 'POST',
