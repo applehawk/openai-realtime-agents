@@ -7,6 +7,7 @@ services:
         # Only NEXT_PUBLIC_* vars need to be passed as build args
         # Server-side vars (AUTH_API_BASE, RAG_SERVER_URL, RAG_API_BASE_URL) are set at runtime
         - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-https://rndaibot.ru/apib/v1/}
+        - NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP=${NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP:-false}
     container_name: oma-frontend
     restart: unless-stopped
     # Порт больше не экспонируем наружу, только для nginx
@@ -20,6 +21,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - AUTH_API_BASE=${AUTH_API_BASE:-http://multiagent_app:7000/api/v1}
       - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-https://rndaibot.ru/apib/v1/}
+      - NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP=${NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP:-false}
       - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED:-0}
       - RAG_SERVER_URL=${RAG_SERVER_URL:-http://79.132.139.57:8000/mcp}
       - RAG_API_BASE_URL=${RAG_API_BASE_URL}

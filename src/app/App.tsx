@@ -30,6 +30,15 @@ import { useHandleSessionHistory } from "./hooks/useHandleSessionHistory";
 
 function App() {
   const searchParams = useSearchParams()!;
+  
+  // Debug: Check if SKIP_GOOGLE_CONNECT_MCP is set
+  const skipGoogleConnectMcp = process.env.NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP === 'true';
+  if (typeof window !== 'undefined') {
+    console.log('[App] Environment check:', {
+      NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP: process.env.NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP,
+      skipGoogleConnectMcp,
+    });
+  }
 
   // ---------------------------------------------------------------------
   // Codec selector – lets you toggle between wide-band Opus (48 kHz)
@@ -146,8 +155,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const skipGoogleConnectMcp = process.env.NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP === 'true';
-    
+    // Use the variable from component scope
     if (skipGoogleConnectMcp) {
       console.log('[App] SKIP_GOOGLE_CONNECT_MCP=true: Skipping MCP wait, connecting to Realtime automatically');
       // Auto-connect when agent is selected, without waiting for MCP
@@ -174,7 +182,7 @@ function App() {
     return () => {
       window.removeEventListener('mcp:ready', onMcpReady);
     };
-  }, [selectedAgentName, sessionStatus]);
+  }, [selectedAgentName, sessionStatus, skipGoogleConnectMcp]);
 
   // useEffect(() => {
   //   if (selectedAgentName && sessionStatus === "DISCONNECTED") {
@@ -396,7 +404,8 @@ function App() {
       disconnectFromRealtime();
       setSessionStatus("DISCONNECTED");
     } else {
-      const skipGoogleConnectMcp = process.env.NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP === 'true';
+      // Use the variable from component scope
+      console.log('[App] onToggleConnection - skipGoogleConnectMcp:', skipGoogleConnectMcp);
       
       // Skip MCP verification if SKIP_GOOGLE_CONNECT_MCP is enabled
       if (!skipGoogleConnectMcp) {

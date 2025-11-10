@@ -8,9 +8,11 @@ WORKDIR /app
 # Server-side variables (AUTH_API_BASE, RAG_SERVER_URL, RAG_API_BASE_URL) are set at runtime
 # via docker-compose.yml environment section, not needed during build
 ARG NEXT_PUBLIC_AUTH_API_URL
+ARG NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP
 
 # Set as environment variable for build (Next.js embeds NEXT_PUBLIC_* vars in client bundle)
 ENV NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL}
+ENV NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP=${NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP}
 
 # Copy package files
 COPY package*.json ./
