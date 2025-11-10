@@ -1,0 +1,7 @@
+---
+description: Проект мултиагентного асситента. OpenAI Realtime API and the OpenAI Agents SDK. 
+alwaysApply: false
+---
+
+# Инструкции для проекта
+- Запуск проекта: docker compose down && docker compose up --build -d

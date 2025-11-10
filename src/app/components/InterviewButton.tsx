@@ -31,57 +31,28 @@ export default function InterviewButton({ onStartInterview }: InterviewButtonPro
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'check_status' }),
         credentials: 'include',
-      }).catch((fetchError) => {
-        // Network error (connection failed, CORS, etc.)
-        console.error('Network error checking interview status:', fetchError);
-        throw fetchError;
       });
 
-      if (!response) {
-        throw new Error('No response received');
-      }
-
       if (response.ok) {
-        try {
-          const result = await response.json();
-          
-          // Определяем статус на основе результата
-          let status: InterviewStatus['status'] = 'not_started';
-          if (result.hasInterview) {
-            if (result.completeness === 100) {
-              status = 'completed';
-            } else if (result.completeness > 0) {
-              status = 'incomplete';
-            }
+        const result = await response.json();
+        
+        // Определяем статус на основе результата
+        let status: InterviewStatus['status'] = 'not_started';
+        if (result.hasInterview) {
+          if (result.completeness === 100) {
+            status = 'completed';
+          } else if (result.completeness > 0) {
+            status = 'incomplete';
           }
-          
-          setInterviewStatus({
-            hasInterview: result.hasInterview || false,
-            status,
-            completeness: result.completeness || 0
-          });
-        } catch (parseError) {
-          console.error('Failed to parse interview status response:', parseError);
-          setInterviewStatus({ hasInterview: false, status: 'error' });
         }
+        
+        setInterviewStatus({
+          hasInterview: result.hasInterview || false,
+          status,
+          completeness: result.completeness || 0
+        });
       } else {
-        // Handle non-OK responses
-        try {
-          const errorData = await response.json();
-          console.error('Failed to check interview status:', {
-            status: response.status,
-            statusText: response.statusText,
-            error: errorData,
-          });
-          setInterviewStatus({ hasInterview: false, status: 'error' });
-        } catch (parseError) {
-          console.error('Failed to check interview status:', {
-            status: response.status,
-            statusText: response.statusText,
-            parseError,
-          });
-          setInterviewStatus({ hasInterview: false, status: 'error' });
-        }
+        setInterviewStatus({ hasInterview: false, status: 'error' });
       }
     } catch (error) {
       console.error('Failed to check interview status:', error);

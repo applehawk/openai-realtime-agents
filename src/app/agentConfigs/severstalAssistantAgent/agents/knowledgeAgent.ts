@@ -11,21 +11,41 @@ import { RealtimeAgent } from '@openai/agents/realtime';
 import { knowledgeAgentPrompt } from '../prompts/knowledgePrompt';
 import {
   lightragQuery,
-  lightragQueryData
+  lightragQueryData,
+  lightragInsertText,
+  lightragSearchLabels,
+  lightragCheckEntityExists,
+  lightragUpdateEntity,
+  lightragUpdateRelation,
+  lightragDeleteEntity,
+  lightragDeleteRelation
 } from '../tools/rag/ragTools';
 
 export const knowledgeAgent = new RealtimeAgent({
   name: 'knowledgeAgent',
 
   handoffDescription:
-    'Специалист по поиску информации в базе знаний, документах, истории. ' +
-    'Используйте для вопросов о прошлом, исторического контекста, поиска в документах и заметках.',
+    'Специалист по работе с базой знаний: поиск, анализ, управление документами и knowledge graph. ' +
+    'Используйте для вопросов о прошлом, исторического контекста, поиска в документах, ' +
+    'управления entities и связями в knowledge graph.',
 
   instructions: knowledgeAgentPrompt,
 
   tools: [
+    // Query tools - основные RAG запросы
     lightragQuery,
     lightragQueryData,
+    
+    // Document tools - управление документами
+    lightragInsertText,
+    
+    // Graph tools - работа с knowledge graph
+    lightragSearchLabels,
+    lightragCheckEntityExists,
+    lightragUpdateEntity,
+    lightragUpdateRelation,
+    lightragDeleteEntity,
+    lightragDeleteRelation,
   ],
 });
 

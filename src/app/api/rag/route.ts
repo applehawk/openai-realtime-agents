@@ -8,6 +8,10 @@ const RAG_SERVER_URL = process.env.RAG_SERVER_URL || 'http://79.132.139.57:8000/
  * avoiding CORS and mixed content issues.
  */
 export async function POST(request: NextRequest) {
+  // Forward the request to RAG MCP server
+  // Увеличиваем таймаут до 60 секунд для медленных запросов
+  const timeout = parseInt(process.env.RAG_API_TIMEOUT || '60000');
+  
   try {
     const body = await request.json();
 
@@ -22,14 +26,15 @@ export async function POST(request: NextRequest) {
     // Log full request for debugging workspace issues
     console.log('[RAG Proxy] Full request:', JSON.stringify(body, null, 2));
 
-    // Forward the request to RAG MCP server
+    console.log(`[RAG Proxy] Calling MCP server at ${RAG_SERVER_URL} with timeout ${timeout}ms`);
+    
     const response = await fetch(RAG_SERVER_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30000), // 30 second timeout
+      signal: AbortSignal.timeout(timeout),
     });
 
     if (!response.ok) {
@@ -68,6 +73,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('[RAG Proxy] Error:', error);
+    console.error('[RAG Proxy] Error details:', {
+      name: error.name,
+      message: error.message,
+      cause: error.cause,
+      stack: error.stack?.substring(0, 500),
+    });
+
+    // Проверяем, является ли ошибка таймаутом или проблемой подключения
+    const isTimeout = error.name === 'TimeoutError' || error.message.includes('timeout') || error.message.includes('aborted');
+    const isConnectionError = error.message.includes('Failed to fetch') || 
+                              error.message.includes('ECONNREFUSED') || 
+                              error.message.includes('ENOTFOUND');
+
+    let errorMessage = 'Internal server error';
+    if (isTimeout) {
+      errorMessage = `RAG MCP server timeout: сервер не отвечает в течение ${timeout}ms. Проверьте доступность сервера по адресу ${RAG_SERVER_URL}`;
+    } else if (isConnectionError) {
+      errorMessage = `RAG MCP server connection failed: не удалось подключиться к ${RAG_SERVER_URL}. Проверьте, что сервер запущен и доступен.`;
+    }
 
     return NextResponse.json(
       {
@@ -75,7 +99,7 @@ export async function POST(request: NextRequest) {
         id: 1,
         error: {
           code: -32603,
-          message: 'Internal server error',
+          message: errorMessage,
           data: error.message,
         },
       },
