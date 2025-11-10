@@ -7,7 +7,7 @@ services:
         # Only NEXT_PUBLIC_* vars need to be passed as build args
         # Server-side vars (AUTH_API_BASE, RAG_SERVER_URL, RAG_API_BASE_URL) are set at runtime
         - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-https://rndaibot.ru/apib/v1/}
-    container_name: openai-realtime-agents
+    container_name: oma-frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
