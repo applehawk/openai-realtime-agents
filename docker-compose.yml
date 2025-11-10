@@ -53,8 +53,8 @@ services:
 
 networks:
   app-network:
-    driver: bridge
+    external: true  # создается автоматически в Makefile или вручную: docker network create app-network
   app-network-dev:
-    external: true  # создается вручную: docker network create app-network-dev
+    external: true  # создается автоматически в Makefile или вручную: docker network create app-network-dev
   oma-network:
     external: true  # 👈 используем уже существующую сеть
