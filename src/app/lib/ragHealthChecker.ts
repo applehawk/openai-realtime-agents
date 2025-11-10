@@ -103,19 +103,63 @@ class RagHealthChecker {
 
       const responseTime = Date.now() - startTime;
 
+      // Пытаемся прочитать ответ, даже если статус не OK
+      // Если сервер отвечает (даже с ошибкой), значит он доступен
+      const responseText = await response.text().catch(() => 'Unable to read response');
+      
+      // Если сервер ответил (даже с ошибкой), он доступен
+      // Различаем только между "работает" и "доступен, но с ошибками"
       if (response.ok) {
-        const data = await response.json();
-        console.log(`✅ RAG MCP (${this.ragMcpUrl}) is accessible (${responseTime}ms)`);
-        return { accessible: true, responseTime };
+        // Статус OK - проверяем, что это валидный JSON-RPC ответ
+        try {
+          const data = JSON.parse(responseText);
+          if (data && (data.jsonrpc === '2.0' || data.result !== undefined || data.error !== undefined)) {
+            if (!data.error) {
+              console.log(`✅ RAG MCP (${this.ragMcpUrl}) is accessible (${responseTime}ms)`);
+              return { accessible: true, responseTime };
+            } else {
+              // Сервер отвечает OK, но возвращает JSON-RPC ошибку
+              const errorMsg = data.error?.message || data.error?.code || 'Unknown error';
+              console.log(`⚠️  RAG MCP (${this.ragMcpUrl}) is accessible but returned error (${responseTime}ms): ${errorMsg}`);
+              return { accessible: true, error: errorMsg, responseTime };
+            }
+          }
+          // JSON, но не JSON-RPC формат - всё равно доступен
+          console.log(`⚠️  RAG MCP (${this.ragMcpUrl}) is accessible but returned unexpected format (${responseTime}ms)`);
+          return { accessible: true, error: 'Unexpected response format', responseTime };
+        } catch (parseError) {
+          // Не удалось распарсить JSON, но статус OK - считаем доступным
+          console.log(`⚠️  RAG MCP (${this.ragMcpUrl}) is accessible but returned invalid JSON (${responseTime}ms)`);
+          return { accessible: true, error: 'Invalid JSON response', responseTime };
+        }
       } else {
-        const error = `HTTP ${response.status}`;
-        console.log(`❌ RAG MCP (${this.ragMcpUrl}) returned ${response.status}`);
-        return { accessible: false, error, responseTime };
+        // Статус не OK (например, 500) - сервер доступен, но возвращает ошибку
+        // Если сервер ответил HTTP, значит он доступен, просто работает неправильно
+        try {
+          const data = JSON.parse(responseText);
+          // Пытаемся извлечь сообщение об ошибке из JSON-RPC ответа
+          if (data && (data.jsonrpc === '2.0' || data.error)) {
+            const errorMsg = data.error?.message || data.error?.code || `HTTP ${response.status}`;
+            console.log(`⚠️  RAG MCP (${this.ragMcpUrl}) is accessible but returned error (${responseTime}ms): ${errorMsg}`);
+            return { accessible: true, error: errorMsg, responseTime };
+          }
+          // JSON, но не JSON-RPC формат
+          console.log(`⚠️  RAG MCP (${this.ragMcpUrl}) is accessible but returned HTTP ${response.status} (${responseTime}ms)`);
+          return { accessible: true, error: `HTTP ${response.status}`, responseTime };
+        } catch (parseError) {
+          // Не JSON, но сервер ответил - значит он доступен
+          console.log(`⚠️  RAG MCP (${this.ragMcpUrl}) is accessible but returned HTTP ${response.status} (${responseTime}ms)`);
+          return { accessible: true, error: `HTTP ${response.status}`, responseTime };
+        }
       }
     } catch (error: any) {
       const responseTime = Date.now() - startTime;
-      console.log(`❌ RAG MCP (${this.ragMcpUrl}) connection failed: ${error.message}`);
-      return { accessible: false, error: error.message, responseTime };
+      // Различаем сетевые ошибки от других
+      const errorMessage = error.name === 'TimeoutError' || error.name === 'AbortError' 
+        ? `Timeout after ${this.config.timeout}ms`
+        : error.message;
+      console.log(`❌ RAG MCP (${this.ragMcpUrl}) connection failed (${responseTime}ms): ${errorMessage}`);
+      return { accessible: false, error: errorMessage, responseTime };
     }
   }
 
@@ -195,15 +239,26 @@ class RagHealthChecker {
 
       // Выводим итоговый результат
       const allAccessible = status.api.accessible && status.mcp.accessible;
-      const icon = allAccessible ? '✅' : '⚠️';
-      const message = allAccessible ? 'All RAG servers are accessible' : 'Some RAG servers are not accessible';
+      const hasWarnings = (status.api.accessible && status.api.error) || (status.mcp.accessible && status.mcp.error);
+      const icon = allAccessible && !hasWarnings ? '✅' : '⚠️';
+      const message = allAccessible && !hasWarnings 
+        ? 'All RAG servers are accessible' 
+        : allAccessible 
+          ? 'All RAG servers are accessible (with warnings)'
+          : 'Some RAG servers are not accessible';
 
       console.log(`${icon} RAG Health Check Complete (${totalTime}ms): ${message}`);
       
-      if (!allAccessible) {
+      if (!allAccessible || hasWarnings) {
         console.log('📊 Detailed Status:');
-        console.log(`   API (${status.api.url}): ${status.api.accessible ? '✅' : '❌'} ${status.api.error || ''}`);
-        console.log(`   MCP (${status.mcp.url}): ${status.mcp.accessible ? '✅' : '❌'} ${status.mcp.error || ''}`);
+        const apiIcon = status.api.accessible 
+          ? (status.api.error ? '⚠️' : '✅')
+          : '❌';
+        const mcpIcon = status.mcp.accessible 
+          ? (status.mcp.error ? '⚠️' : '✅')
+          : '❌';
+        console.log(`   API (${status.api.url}): ${apiIcon} ${status.api.error || 'OK'}`);
+        console.log(`   MCP (${status.mcp.url}): ${mcpIcon} ${status.mcp.error || 'OK'}`);
       }
 
       return status;

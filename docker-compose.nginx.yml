@@ -1,0 +1,45 @@
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: oma-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Монтируем оба конфига из хоста (nginx автоматически прочитает оба)
+      - /etc/nginx/sites-enabled/rndaibot.conf:/etc/nginx/conf.d/rndaibot.conf:ro
+      - /etc/nginx/sites-enabled/rndaibotdev.conf:/etc/nginx/conf.d/rndaibotdev.conf:ro
+      # Монтируем SSL сертификаты (сохраняем путь)
+      - /etc/nginx/ssl:/etc/nginx/ssl:ro
+      # Монтируем логи
+      - nginx-logs:/var/log/nginx
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - app-network
+      - app-network-dev  # для доступа к dev контейнерам
+      - oma-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  nginx-logs:
+    driver: local
+
+networks:
+  app-network:
+    external: true  # создается в docker-compose.yml
+  app-network-dev:
+    external: true  # создается вручную: docker network create app-network-dev
+  oma-network:
+    external: true  # используем уже существующую сеть
+

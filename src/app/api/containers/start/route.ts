@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-const AUTH_API_BASE = process.env.NEXT_PUBLIC_AUTH_API_URL || 'https://rndaibot.ru/apib/v1/';
+// Use internal Docker network URL for server-side requests
+const AUTH_API_BASE = process.env.AUTH_API_BASE || 'http://multiagent_app:7000/api/v1';
 
 export async function POST(_request: NextRequest) {
   try {
@@ -16,7 +17,7 @@ export async function POST(_request: NextRequest) {
     }
 
     // Call OMA Backend to start container
-    const response = await fetch(`${AUTH_API_BASE}containers/start`, {
+    const response = await fetch(`${AUTH_API_BASE}/containers/start`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,

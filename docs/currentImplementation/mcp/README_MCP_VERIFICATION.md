@@ -124,7 +124,7 @@ Open browser DevTools → Network tab:
 1. Connect to the agent and trigger a tool
 2. Look for requests to:
    - `https://rndaibot.app.n8n.cloud/mcp/google_my_account`
-   - `http://79.132.139.57:9621/`
+   - `https://79.132.139.57:9621/`
 3. Verify the requests complete successfully (status 200)
 
 ## Expected Results

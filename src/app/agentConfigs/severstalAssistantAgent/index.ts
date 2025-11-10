@@ -11,7 +11,16 @@
  */
 
 // Import new multi-agent architecture
-import { routerAgent, routerScenario } from './agents/routerAgent';
+import {
+  routerAgent,
+  routerScenario,
+  initializeMCPServersBeforeAgent,
+  cleanupMCPServer,
+  mcpServerManager,
+} from './agents/routerAgent';
+
+// MCP Server should be initialized BEFORE app loads and agent is used
+// Call initializeMCPServersBeforeAgent() after user authentication, before using the agent
 
 // Export the Router Agent as main agent
 export const severstalAssistant = routerAgent;
@@ -19,9 +28,21 @@ export const severstalAssistant = routerAgent;
 // Export scenario for use in App
 export const chatSeverstalAssistantScenario = routerScenario;
 
+// Export MCP server management functions
+export { initializeMCPServersBeforeAgent, cleanupMCPServer, mcpServerManager };
+
 // Default export
 export default chatSeverstalAssistantScenario;
 
+// Verification: Log configuration
+console.log('[severstalAssistant] Multi-agent architecture initialized');
+console.log('[severstalAssistant] Router Agent:', {
+  name: routerAgent.name,
+  handoffCount: routerAgent.handoffs?.length || 0,
+  handoffNames: routerAgent.handoffs?.map((a: any) => a.name) || [],
+  toolCount: routerAgent.tools?.length || 0,
+  toolNames: routerAgent.tools?.map((t: any) => t.name || t.definition?.name || 'unnamed') || [],
+});
 
 // Log handoff agents
 if (routerAgent.handoffs && routerAgent.handoffs.length > 0) {
@@ -40,3 +61,10 @@ if (routerAgent.tools && routerAgent.tools.length > 0) {
     console.log(`  ${idx + 1}. ${name}: ${desc}`);
   });
 }
+
+// Log MCP servers status
+console.log('[severstalAssistant] MCP Servers:', {
+  count: routerAgent.mcpServers?.length || 0,
+  status: 'Will be initialized after user authentication',
+  initFunction: 'initializeMCPServersBeforeAgent()',
+});

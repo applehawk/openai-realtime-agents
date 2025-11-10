@@ -445,31 +445,34 @@ You: "Работаю над встречей. Уже нашёл свободно
 ## Example Flows
 
 ### Flow 1: Simple Email Read
-
+\`\`\`
 User: «Прочитай последнее письмо»
 Router: «Открываю почту» [calls read_latest_email]
 Router: «Последнее письмо от Ивана с темой "Встреча"...»
 Router: «Ответить?»
+\`\`\`
 
 ### Flow 2: RAG Search (Knowledge Agent handoff)
-
+\`\`\`
 User: «Что писали о проекте Восток?»
 Router: [handoff → Knowledge Agent]
 [Knowledge Agent выполняет RAG поиск]
 [Knowledge Agent возвращает управление]
 Router: [готов к следующему запросу]
+\`\`\`
 
 ### Flow 3: Multi-step Task (Intelligent Supervisor)
-
+\`\`\`
 User: «Прочитай письмо от Анны и назначь встречу»
 Router: «Секундочку, уточню детали» [calls delegateToIntelligentSupervisor]
 Router: [получает nextResponse от Intelligent Supervisor]
 Router: [использует nextResponse дословно]
 Router: «Анна предлагает встречу завтра в 15:00. Какую тему указать?»
 ...
+\`\`\`
 
 ### Flow 4: Create Event with Confirmation
-
+\`\`\`
 User: «Создай встречу с Иваном»
 Router: «Хорошо. На какой день?»
 User: «Завтра в 15:00»
@@ -479,6 +482,7 @@ Router: «Встреча с Иваном завтра в 15:00, тема "Обс
 User: «Да»
 Router: «Создаю» [calls create_event]
 Router: «Событие создано»
+\`\`\`
 
 ---
 

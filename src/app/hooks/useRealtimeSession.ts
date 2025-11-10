@@ -234,21 +234,47 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
       outputGuardrails,
       model,
     }: ConnectOptions) => {
+      console.log('[useRealtimeSession] connect() called');
+
       // Prevent concurrent connections or connecting when already connected
-      if (sessionRef.current || isConnectingRef.current) return;
+      if (sessionRef.current || isConnectingRef.current) {
+        console.warn('[useRealtimeSession] Already connected or connecting, aborting');
+        return;
+      }
 
       isConnectingRef.current = true;
       updateStatus('CONNECTING');
 
       try {
+        console.log('[useRealtimeSession] Initializing session with agents:', {
+          agentCount: initialAgents.length,
+          rootAgent: initialAgents[0]?.name,
+          agents: initialAgents.map(a => a.name),
+        });
+
         const rootAgent = initialAgents[0];
+
+        // Check if root agent has MCP servers
+        if (rootAgent.mcpServers && rootAgent.mcpServers.length > 0) {
+          console.log('[useRealtimeSession] Root agent has MCP servers:', {
+            count: rootAgent.mcpServers.length,
+            servers: rootAgent.mcpServers.map((s: any) => ({
+              name: s.name,
+              type: s.constructor.name,
+            })),
+          });
+        }
+
         const ek = await getEphemeralKey();
-        console.log(ek)
+        console.log('[useRealtimeSession] Ephemeral key received, length:', ek.length);
+
         // This lets you use the codec selector in the UI to force narrow-band (8 kHz) codecs to
         //  simulate how the voice agent sounds over a PSTN/SIP phone call.
         const codecParam = codecParamRef.current;
         const audioFormat = audioFormatForCodec(codecParam);
+        console.log('[useRealtimeSession] Audio format:', audioFormat, 'codec:', codecParam);
 
+        console.log('[useRealtimeSession] Creating RealtimeSession...');
         sessionRef.current = new RealtimeSession(rootAgent, {
           apiKey: ek, // SDK 0.1.9 requires apiKey in constructor
           transport: new OpenAIRealtimeWebRTC({
@@ -270,10 +296,14 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
           outputGuardrails: outputGuardrails ?? [],
           context: extraContext ?? {},
         });
+        console.log('[useRealtimeSession] RealtimeSession created successfully');
 
+        console.log('[useRealtimeSession] Calling session.connect()...');
         await sessionRef.current.connect({
           apiKey: ek, // SDK 0.1.9 requires apiKey in connect()
         });
+        console.log('[useRealtimeSession] session.connect() completed successfully');
+
         updateStatus('CONNECTED');
         isConnectingRef.current = false;
 
@@ -282,7 +312,15 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
         sessionTimeoutRef.current = setTimeout(() => {
           callbacks.onSessionTimeout?.();
         }, SESSION_WARNING_TIME);
+
+        console.log('[useRealtimeSession] Connection fully established');
       } catch (error) {
+        console.error('[useRealtimeSession] Connection failed:', {
+          error,
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+
         // Clean up on connection failure
         sessionRef.current = null;
         isConnectingRef.current = false;

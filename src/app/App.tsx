@@ -10,6 +10,7 @@ import BottomToolbar from "./components/BottomToolbar";
 import UserProfile from "./components/UserProfile";
 import SeverstalLogo from "./components/SeverstalLogo";
 import InterviewButton from "./components/InterviewButton";
+import RagStatusChecker from "./components/RagStatusChecker";
 
 // Types
 import { SessionStatus } from "@/app/types";
@@ -21,13 +22,8 @@ import { useEvent } from "@/app/contexts/EventContext";
 import { useRealtimeSession } from "./hooks/useRealtimeSession";
 
 // Agent configs
-import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
-import { chatSeverstalAssistantScenario } from "@/app/agentConfigs/severstalAssistantAgent";
-
-// Map used by connect logic for scenarios defined via the SDK.
-const sdkScenarioMap: Record<string, RealtimeAgent[]> = {
-  chatSeverstalAssistant: chatSeverstalAssistantScenario,
-};
+// import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
+import { chatSeverstalAssistantScenario, mcpServerManager } from "@/app/agentConfigs/severstalAssistantAgent";
 
 import useAudioDownload from "./hooks/useAudioDownload";
 import { useHandleSessionHistory } from "./hooks/useHandleSessionHistory";
@@ -101,6 +97,15 @@ function App() {
   const [sessionStatus, setSessionStatus] =
     useState<SessionStatus>("DISCONNECTED");
 
+  // Store current user info for use in session
+  const [currentUserInfo, setCurrentUserInfo] = useState<{
+    userId: string;
+    username: string;
+    email: string;
+    googleConnected?: boolean;
+    googleServices?: string[];
+  } | null>(null);
+
   const [isEventsPaneExpanded, setIsEventsPaneExpanded] =
     useState<boolean>(true);
   const [userText, setUserText] = useState<string>("");
@@ -113,6 +118,7 @@ function App() {
       return stored ? stored === 'true' : true;
     },
   );
+  const [isRagStatusVisible, setIsRagStatusVisible] = useState<boolean>(false);
 
   // Initialize the recording hook.
   const { startRecording, stopRecording, downloadRecording } =
@@ -129,28 +135,42 @@ function App() {
 
   useHandleSessionHistory();
 
+  // Note: MCP server initialization moved to UserProfile.tsx
+  // It will be initialized after container starts successfully
+
   useEffect(() => {
-    let finalAgentConfig = searchParams.get("agentConfig");
-    if (!finalAgentConfig || !allAgentSets[finalAgentConfig]) {
-      finalAgentConfig = defaultAgentSetKey;
-      const url = new URL(window.location.toString());
-      url.searchParams.set("agentConfig", finalAgentConfig);
-      window.location.replace(url.toString());
-      return;
-    }
-
-    const agents = allAgentSets[finalAgentConfig];
-    const agentKeyToUse = agents[0]?.name || "";
-
+    // Set default agent name for severstalAssistant
+    const agentKeyToUse = 'routerAgent';
     setSelectedAgentName(agentKeyToUse);
-    setSelectedAgentConfigSet(agents);
-  }, [searchParams]);
+    setSelectedAgentConfigSet(chatSeverstalAssistantScenario);
+  }, []);
 
   useEffect(() => {
-    if (selectedAgentName && sessionStatus === "DISCONNECTED") {
-      connectToRealtime();
-    }
-  }, [selectedAgentName]);
+    const onMcpReady = () => {
+      console.log('[App] Received mcp:ready event');
+      // Verify MCP is actually connected before connecting to Realtime
+      if (mcpServerManager.isServerConnected()) {
+        console.log('[App] MCP server confirmed connected, proceeding with Realtime connection');
+        if (selectedAgentName && sessionStatus === 'DISCONNECTED') {
+          connectToRealtime();
+        }
+      } else {
+        console.warn('[App] Received mcp:ready but server not connected, skipping Realtime connection');
+      }
+    };
+    window.addEventListener('mcp:ready', onMcpReady);
+
+    return () => {
+      window.removeEventListener('mcp:ready', onMcpReady);
+    };
+  }, [selectedAgentName, sessionStatus]);
+
+  // useEffect(() => {
+  //   if (selectedAgentName && sessionStatus === "DISCONNECTED") {
+  //     connectToRealtime();
+  //   }
+  // }, [selectedAgentName]);
+
 
   useEffect(() => {
     if (
@@ -193,46 +213,92 @@ function App() {
   };
 
   const connectToRealtime = async () => {
-    const agentSetKey = searchParams.get("agentConfig") || "default";
-    if (sdkScenarioMap[agentSetKey]) {
-      if (sessionStatus !== "DISCONNECTED") return;
-
-      try {
-        const EPHEMERAL_KEY = await fetchEphemeralKey();
-        if (!EPHEMERAL_KEY) return;
-
-        // Ensure the selectedAgentName is first so that it becomes the root
-        const reorderedAgents = [...sdkScenarioMap[agentSetKey]];
-        const idx = reorderedAgents.findIndex((a) => a.name === selectedAgentName);
-        if (idx > 0) {
-          const [agent] = reorderedAgents.splice(idx, 1);
-          reorderedAgents.unshift(agent);
-        }
-
-        await connect({
-          getEphemeralKey: async () => EPHEMERAL_KEY,
-          initialAgents: reorderedAgents,
-          audioElement: sdkAudioElement,
-          outputGuardrails: [],
-          extraContext: {
-            addTranscriptBreadcrumb,
-            addTaskProgressMessage,
-            updateTaskProgress,
-            // Allow agents to access task context from IntelligentSupervisor
-            getTaskContext: async (sessionId: string) => {
-              // Import dynamically to avoid circular dependencies
-              const { taskContextStore } = await import('./api/supervisor/unified/taskContextStore');
-              return taskContextStore.getContext(sessionId);
-            },
-          },
-          model: "gpt-realtime",
-        });
-      } catch (err) {
-        console.error("Error connecting via SDK:", err);
-        setSessionStatus("DISCONNECTED");
-      }
+    console.log('[App] connectToRealtime() called');
+    console.log('[App] Current sessionStatus:', sessionStatus);
+    if (sessionStatus !== "DISCONNECTED") {
+      console.warn('[App] Session not DISCONNECTED, aborting connection');
       return;
     }
+
+    try {
+      // NOTE: MCP servers will be initialized AFTER connection to avoid trace context errors
+      console.log('[App] 🔄 Skipping MCP initialization before connect() to avoid trace context errors');
+
+      console.log('[App] Fetching ephemeral key...');
+      const EPHEMERAL_KEY = await fetchEphemeralKey();
+      if (!EPHEMERAL_KEY) {
+        console.error('[App] No ephemeral key received, aborting connection');
+        return;
+      }
+      console.log('[App] Ephemeral key received successfully');
+
+      // Fetch user info to include in context
+      console.log('[App] 👤 Fetching user info for context...');
+      let currentUser = null;
+      try {
+        const userResponse = await fetch('/api/auth/me', {
+          method: 'GET',
+          credentials: 'include',
+        });
+        if (userResponse.ok) {
+          currentUser = await userResponse.json();
+          console.log('[App] ✅ User info retrieved:', {
+            username: currentUser.username,
+            email: currentUser.email,
+          });
+
+          // Save to state for later use
+          setCurrentUserInfo({
+            userId: currentUser.id,
+            username: currentUser.username,
+            email: currentUser.email,
+            googleConnected: currentUser.google_connected,
+            googleServices: currentUser.google_services,
+          });
+        } else {
+          console.warn('[App] ⚠️ Failed to fetch user info (not authenticated)');
+        }
+      } catch (userError) {
+        console.error('[App] ❌ Error fetching user info:', userError);
+      }
+
+      await connect({
+        getEphemeralKey: async () => EPHEMERAL_KEY,
+        initialAgents: chatSeverstalAssistantScenario,
+        audioElement: sdkAudioElement,
+        outputGuardrails: [],
+        extraContext: {
+          addTranscriptBreadcrumb,
+          addTaskProgressMessage,
+          updateTaskProgress,
+          // Allow agents to access task context from IntelligentSupervisor
+          getTaskContext: async (sessionId: string) => {
+            // Import dynamically to avoid circular dependencies
+            const { taskContextStore } = await import('./api/supervisor/unified/taskContextStore');
+            return taskContextStore.getContext(sessionId);
+          },
+          // Include user info in context so tools can access it without async fetch
+          currentUser: currentUser ? {
+            userId: currentUser.id,
+            username: currentUser.username,
+            email: currentUser.email,
+            googleConnected: currentUser.google_connected,
+            googleServices: currentUser.google_services,
+          } : null,
+        },
+        model: "gpt-realtime",
+      });
+      console.log('[App] ✅ connect() completed successfully');
+      
+    } catch (err) {
+      console.error("[App] Error connecting via SDK:", {
+        error: err,
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      setSessionStatus("DISCONNECTED");
+    }
+    return;
   };
 
   const disconnectFromRealtime = () => {
@@ -272,10 +338,13 @@ function App() {
       },
     });
 
-      // Send an initial message to trigger the agent to get user info and check interview status
-      if (shouldTriggerResponse) {
-        sendSimulatedUserMessage('Привет! Сначала получи информацию о пользователе, затем проверь статус моего интервью и предложи помощь.');
-      }
+    // Send an initial message with user context
+    if (shouldTriggerResponse && currentUserInfo) {
+      const userContextMessage = `Привет! Я ${currentUserInfo.username} (email: ${currentUserInfo.email}). Проверь статус моего интервью и предложи помощь.`;
+      sendSimulatedUserMessage(userContextMessage);
+    } else if (shouldTriggerResponse) {
+      sendSimulatedUserMessage('Привет! Проверь статус моего интервью и предложи помощь.');
+    }
     return;
   }
 
@@ -316,7 +385,21 @@ function App() {
       disconnectFromRealtime();
       setSessionStatus("DISCONNECTED");
     } else {
-      connectToRealtime();
+      // Verify MCP server is connected before attempting Realtime connection
+      if (!mcpServerManager.isServerConnected()) {
+        console.warn('[App] Cannot connect to Realtime: MCP server is not connected');
+        alert('Please start the MCP container first from your user profile dropdown.');
+        return;
+      }
+
+      try {
+        console.log('[App] MCP server verified connected, initiating Realtime connection');
+        connectToRealtime();
+        // при успешном подключении connectToRealtime обычно сам установит sessionStatus,
+        // но если вы хотите — можно здесь setSessionStatus("CONNECTING") до вызова и т.д.
+      } catch (err) {
+        console.error('connectToRealtime failed from onToggleConnection:', err);
+      }
     }
   };
 
@@ -419,11 +502,23 @@ function App() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => setIsRagStatusVisible(!isRagStatusVisible)}
+            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+            title="Toggle RAG Status"
+          >
+            RAG Status
+          </button>
           <InterviewButton onStartInterview={handleStartInterview} />
           <UserProfile />
         </div>
       </div>
 
+      {isRagStatusVisible && (
+        <div className="px-5 pb-2">
+          <RagStatusChecker />
+        </div>
+      )}
 
       <div className="flex flex-1 gap-2 px-2 overflow-hidden relative">
         <Transcript
@@ -454,7 +549,6 @@ function App() {
         codec={urlCodec}
         onCodecChange={handleCodecChange}
       />
-
     </div>
   );
 }

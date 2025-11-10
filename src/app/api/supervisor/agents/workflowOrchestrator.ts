@@ -9,13 +9,6 @@ export const workflowOrchestratorAgent = new Agent({
   name: 'WorkflowOrchestratorAgent',
   model: 'gpt-4o',
   instructions: workflowOrchestratorInstructions,
-  tools: [
-    // Calendar MCP for email and calendar operations
-    hostedMcpTool({
-      serverLabel: 'calendar',
-      serverUrl: 'https://rndaibot.app.n8n.cloud/mcp/google_my_account',
-    }),
-  ],
 });
 
 // Log agent initialization

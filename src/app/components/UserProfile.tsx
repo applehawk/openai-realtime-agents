@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/app/contexts/AuthContext';
+import { cleanupMCPServer, initializeMCPServersBeforeAgent } from '@/app/agentConfigs/severstalAssistantAgent';
 import styles from './UserProfile.module.css';
 
 interface GoogleStatus {
@@ -37,14 +38,46 @@ export default function UserProfile() {
     try {
       const response = await fetch('/api/google/status', {
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }).catch((fetchError) => {
+        // Network error (connection failed, CORS, etc.)
+        console.error('Network error loading Google status:', fetchError);
+        throw fetchError;
       });
 
+      if (!response) {
+        throw new Error('No response received');
+      }
+
       if (response.ok) {
-        const data = await response.json();
-        setGoogleStatus(data);
+        try {
+          const data = await response.json();
+          setGoogleStatus(data);
+        } catch (parseError) {
+          console.error('Failed to parse Google status response:', parseError);
+        }
+      } else {
+        // Handle non-OK responses
+        try {
+          const errorData = await response.json();
+          console.error('Failed to load Google status:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData,
+          });
+        } catch (parseError) {
+          console.error('Failed to load Google status:', {
+            status: response.status,
+            statusText: response.statusText,
+            parseError,
+          });
+        }
       }
     } catch (error) {
       console.error('Failed to load Google status:', error);
+      // Error is already logged, component will handle gracefully
     }
   };
 
@@ -52,14 +85,47 @@ export default function UserProfile() {
     try {
       const response = await fetch('/api/containers/status', {
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }).catch((fetchError) => {
+        // Network error (connection failed, CORS, etc.)
+        console.error('Network error loading container status:', fetchError);
+        throw fetchError;
       });
 
+      if (!response) {
+        throw new Error('No response received');
+      }
+
       if (response.ok) {
-        const data = await response.json();
-        setContainerStatus(data);
+        try {
+          const data = await response.json();
+          setContainerStatus(data);
+          // Note: MCP server initialization moved to App.tsx before connectToRealtime
+        } catch (parseError) {
+          console.error('Failed to parse container status response:', parseError);
+        }
+      } else {
+        // Handle non-OK responses
+        try {
+          const errorData = await response.json();
+          console.error('Failed to load container status:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData,
+          });
+        } catch (parseError) {
+          console.error('Failed to load container status:', {
+            status: response.status,
+            statusText: response.statusText,
+            parseError,
+          });
+        }
       }
     } catch (error) {
       console.error('Failed to load container status:', error);
+      // Error is already logged, component will handle gracefully
     }
   };
 
@@ -97,6 +163,10 @@ export default function UserProfile() {
       });
 
       if (response.ok) {
+        // Cleanup MCP server when disconnecting Google
+        console.log('[UserProfile] Google disconnected, cleaning up MCP server...');
+        await cleanupMCPServer();
+
         alert('Google account disconnected');
         await refreshUser();
         setGoogleStatus(null);
@@ -118,13 +188,82 @@ export default function UserProfile() {
         credentials: 'include',
       });
 
-      if (response.ok) {
-        await loadContainerStatus();
-        alert('Container started successfully');
-      } else {
-        const error = await response.json();
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
         alert(`Failed to start container: ${error.detail || 'Unknown error'}`);
+        return;
       }
+
+      // Ждём, пока контейнер поднимется и станет healthy (polling)
+      const waitForReady = async (timeoutMs = 60_000, intervalMs = 2000): Promise<ContainerStatus> => {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+          // Fetch fresh status directly, don't rely on state
+          const response = await fetch('/api/containers/status', {
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+          });
+
+          if (response.ok) {
+            const status: ContainerStatus = await response.json();
+
+            // Update state for UI
+            setContainerStatus(status);
+
+            // Check if ready
+            if (status.running && status.health === 'healthy' && status.port) {
+              return status;
+            }
+          }
+
+          // небольшой delay
+          await new Promise((r) => setTimeout(r, intervalMs));
+        }
+        throw new Error('Container did not become healthy within timeout');
+      };
+
+      try {
+        await waitForReady(120_000, 2000);
+        alert('Container started and healthy. Initializing MCP client...');
+
+        // вызываем initializeMCPServersBeforeAgent и ждём, пока MCP подключится
+        // Note: accessToken is not needed here - mcpServerManager will fetch it from cookies
+        console.log('[UserProfile] 🚀 Initializing MCP servers...');
+        const initResult = await initializeMCPServersBeforeAgent();
+
+        if (!initResult) {
+          throw new Error('initializeMCPServersBeforeAgent returned false');
+        }
+
+        console.log('[UserProfile] ✅ MCP initialized successfully');
+
+        // Fetch and log available MCP tools via server endpoint
+        try {
+          console.log('[UserProfile] 🔍 Fetching available MCP tools...');
+          const toolsResponse = await fetch('/api/mcp/tools', {
+            credentials: 'include',
+          });
+
+          if (toolsResponse.ok) {
+            const toolsData = await toolsResponse.json();
+            console.log('[UserProfile] ✅ MCP tools available:', {
+              count: toolsData.toolCount,
+              tools: toolsData.tools?.map((t: any) => t.name) || []
+            });
+          } else {
+            console.warn('[UserProfile] ⚠️ Failed to fetch MCP tools:', await toolsResponse.text());
+          }
+        } catch (toolsError) {
+          console.error('[UserProfile] ⚠️ Error fetching MCP tools:', toolsError);
+        }
+
+        alert('MCP initialized successfully. Notifying app to connect to realtime.');
+        window.dispatchEvent(new CustomEvent('mcp:ready'));
+      } catch (err) {
+        console.error('[UserProfile] MCP init failed:', err);
+        alert('Container started but MCP initialization failed: ' + (err instanceof Error ? err.message : String(err)));
+      }
+
     } catch (error) {
       console.error('Failed to start container:', error);
       alert('Failed to start container');
@@ -146,6 +285,10 @@ export default function UserProfile() {
       });
 
       if (response.ok) {
+        // Cleanup MCP server connection before updating status
+        console.log('[UserProfile] Container stopped, cleaning up MCP server...');
+        await cleanupMCPServer();
+
         await loadContainerStatus();
         alert('Container stopped successfully');
       } else {
