@@ -40,7 +40,8 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - app-network
-      - oma-network       # общая для взаимодействия с oma-backend
+      - oma-network
+      - oma-network-dev       # общая для взаимодействия с oma-backend
     logging:
       driver: "json-file"
       options:
@@ -59,4 +60,6 @@ networks:
   app-network-dev:
     external: true  # создается автоматически в Makefile или вручную: docker network create app-network-dev
   oma-network:
+    external: true  # 👈 используем уже существующую сеть
+  oma-network-dev:
     external: true  # 👈 используем уже существующую сеть
