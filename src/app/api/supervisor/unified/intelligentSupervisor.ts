@@ -270,12 +270,27 @@ export class IntelligentSupervisor {
       executionTime,
     });
 
-    // Emit: Task completed
+    // Emit: Task completed with FULL RESULT
     this.emitProgress('completed', 'Задача выполнена успешно', 100, {
       strategy: result.strategy,
       complexity: result.complexity,
       executionTime,
       workflowStepsCount: result.workflowSteps?.length || 0,
+      // IMPORTANT: hierarchicalBreakdown at top level for taskContextStore
+      hierarchicalBreakdown: result.hierarchicalBreakdown,
+      // Include full result for client
+      finalResult: {
+        strategy: result.strategy,
+        complexity: result.complexity,
+        nextResponse: result.nextResponse,
+        workflowSteps: result.workflowSteps,
+        hierarchicalBreakdown: result.hierarchicalBreakdown,
+        progress: result.progress,
+        executionTime: result.executionTime,
+        plannedSteps: result.plannedSteps,
+        delegateBack: result.delegateBack,
+        delegationGuidance: result.delegationGuidance,
+      },
     });
 
     return result;

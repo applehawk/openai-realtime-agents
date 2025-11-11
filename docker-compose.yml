@@ -17,6 +17,8 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - DOCKER_ENV=true
+      - PERPLEXITY_BASE_URL=${PERPLEXITY_BASE_URL}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - AUTH_API_BASE=${AUTH_API_BASE:-http://multiagent_app:7000/api/v1}
       - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-https://rndaibot.ru/apib/v1/}

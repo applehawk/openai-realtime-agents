@@ -137,15 +137,6 @@ Example queries:
         type: 'string',
         description: 'The research query or question. Be specific and use natural language.',
       },
-      model: {
-        type: 'string',
-        enum: ['sonar', 'sonar-pro', 'sonar-reasoning-pro'],
-        description: 'Perplexity model: "sonar" (fast), "sonar-pro" (default, balanced), "sonar-reasoning-pro" (deep analysis)',
-      },
-      systemPrompt: {
-        type: 'string',
-        description: 'Optional custom system prompt to guide the research focus',
-      },
     },
     required: ['query'],
     additionalProperties: false,

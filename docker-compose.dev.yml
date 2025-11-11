@@ -12,6 +12,8 @@ services:
       - .env.dev
     environment:
       - NODE_ENV=${NODE_ENV:-development}
+      - PERPLEXITY_BASE_URL=${PERPLEXITY_BASE_URL}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-https://rndaibotdev.ru/apib/v1}
       - NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED:-0}

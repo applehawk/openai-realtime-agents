@@ -309,13 +309,13 @@ export class TaskOrchestrator {
           }
         }
       } else {
-        // Task failed
-        task.status = 'failed';
+        // Task not completed - preserve specific status (researchFailed, needUserInput, toolError, etc.)
+        task.status = response.status;
         task.error = response.error || 'Unknown error';
         task.executionEndTime = new Date();
         taskTree.failedTasks++;
 
-        console.error(`[TaskOrchestrator] Task ${task.id} failed:`, response.error);
+        console.error(`[TaskOrchestrator] Task ${task.id} failed with status '${response.status}':`, response.error);
 
         // Notify progress with tree update
         this.notifyProgress({
@@ -542,13 +542,13 @@ export class TaskOrchestrator {
         // Update parent's subtask results
         this.updateParentSubtaskResults(task, taskTree);
       } else {
-        // Task failed
-        task.status = 'failed';
+        // Task not completed - preserve specific status (researchFailed, needUserInput, toolError, etc.)
+        task.status = response.status;
         task.error = response.error || 'Unknown error';
         task.executionEndTime = new Date();
         taskTree.failedTasks++;
 
-        console.error(`[TaskOrchestrator] Task ${task.id} failed:`, response.error);
+        console.error(`[TaskOrchestrator] Task ${task.id} failed with status '${response.status}':`, response.error);
 
         // Notify progress with tree update
         this.notifyProgress({

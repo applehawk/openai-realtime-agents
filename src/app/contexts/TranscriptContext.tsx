@@ -166,6 +166,12 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
     setTranscriptItems((prev) =>
       prev.map((item) => {
         if (item.type === "TASK_PROGRESS" && item.sessionId === sessionId) {
+          // Prevent updates to already completed tasks
+          if (item.status === "DONE" && progress >= 100) {
+            console.log('[TranscriptContext] Skipping update - task already marked as DONE');
+            return item;
+          }
+
           const newUpdates = [...(item.progressUpdates || []), { progress, message, details, timestamp: Date.now() }];
           return {
             ...item,
