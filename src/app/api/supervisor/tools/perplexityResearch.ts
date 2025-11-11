@@ -2,177 +2,97 @@
  * Perplexity Research Tool
  *
  * Enables AI agents to search and synthesize information from the web using Perplexity AI.
- * This tool provides real-time web research capabilities with intelligent source synthesis.
+ * Uses OpenAI SDK configured to point at Perplexity's Sonar API endpoint.
  *
- * Features:
- * - Web search with AI-powered synthesis
- * - Support for citations and sources
- * - Configurable search domains
- * - Multiple model options (sonar, sonar-pro)
+ * Based on: https://docs.perplexity.ai/cookbook/articles/openai-agents-integration/README
  *
- * Version: 1.0
+ * Version: 2.0
  * Date: 2025-11-11
- *
- * Documentation:
- * - Perplexity API: https://docs.perplexity.ai/guides/chat-completions-sdk
- * - TypeScript SDK: https://github.com/perplexityai/perplexity-node
  */
 
 import { tool } from '@openai/agents';
+import OpenAI from 'openai';
 
 // Perplexity API configuration
 const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
-const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
+const PERPLEXITY_BASE_URL = process.env.PERPLEXITY_BASE_URL || 'https://api.perplexity.ai';
 
 /**
- * Available Perplexity models
- * - sonar: Fast, cost-effective online model
- * - sonar-pro: Advanced reasoning with deep research
+ * Initialize OpenAI client configured for Perplexity
  */
-type PerplexityModel = 'sonar' | 'sonar-pro';
+let perplexityClient: OpenAI | null = null;
 
-/**
- * Perplexity API request payload
- */
-interface PerplexityRequest {
-  model: string;
-  messages: Array<{
-    role: 'system' | 'user' | 'assistant';
-    content: string;
-  }>;
-  max_tokens?: number;
-  temperature?: number;
-  top_p?: number;
-  return_citations?: boolean;
-  return_images?: boolean;
-  return_related_questions?: boolean;
-  search_domain_filter?: string[];
-  search_recency_filter?: 'month' | 'week' | 'day' | 'hour';
-  stream?: boolean;
-}
-
-/**
- * Perplexity API response structure
- */
-interface PerplexityResponse {
-  id: string;
-  model: string;
-  object: string;
-  created: number;
-  choices: Array<{
-    index: number;
-    finish_reason: string;
-    message: {
-      role: string;
-      content: string;
-    };
-    delta: {
-      role: string;
-      content: string;
-    };
-  }>;
-  usage: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
-  citations?: string[];
-  images?: string[];
-  related_questions?: string[];
-}
-
-/**
- * Execute Perplexity search request
- */
-async function executePerplexitySearch(
-  query: string,
-  options: {
-    model?: PerplexityModel;
-    systemPrompt?: string;
-    maxTokens?: number;
-    returnCitations?: boolean;
-    returnRelatedQuestions?: boolean;
-    searchDomainFilter?: string[];
-    searchRecencyFilter?: 'month' | 'week' | 'day' | 'hour';
-  } = {}
-): Promise<PerplexityResponse> {
+function getPerplexityClient(): OpenAI {
   if (!PERPLEXITY_API_KEY) {
     throw new Error('PERPLEXITY_API_KEY is not configured in environment variables');
   }
 
-  const {
-    model = 'sonar',
-    systemPrompt = 'You are a helpful research assistant. Provide accurate, well-sourced information.',
-    maxTokens = 2000,
-    returnCitations = true,
-    returnRelatedQuestions = true,
-    searchDomainFilter,
-    searchRecencyFilter,
-  } = options;
-
-  const payload: PerplexityRequest = {
-    model,
-    messages: [
-      {
-        role: 'system',
-        content: systemPrompt,
-      },
-      {
-        role: 'user',
-        content: query,
-      },
-    ],
-    max_tokens: maxTokens,
-    temperature: 0.2, // Lower temperature for more focused research
-    top_p: 0.9,
-    return_citations: returnCitations,
-    return_images: false, // Images not typically needed for text research
-    return_related_questions: returnRelatedQuestions,
-    stream: false,
-  };
-
-  // Add optional filters
-  if (searchDomainFilter && searchDomainFilter.length > 0) {
-    payload.search_domain_filter = searchDomainFilter;
+  if (!perplexityClient) {
+    perplexityClient = new OpenAI({
+      apiKey: PERPLEXITY_API_KEY,
+      baseURL: PERPLEXITY_BASE_URL,
+    });
   }
 
-  if (searchRecencyFilter) {
-    payload.search_recency_filter = searchRecencyFilter;
-  }
+  return perplexityClient;
+}
+
+/**
+ * Available Perplexity models
+ * - sonar: Fast, cost-effective online model
+ * - sonar-pro: Advanced reasoning with deep research (default)
+ * - sonar-reasoning-pro: Deep reasoning tasks
+ */
+type PerplexityModel = 'sonar' | 'sonar-pro' | 'sonar-reasoning-pro';
+
+/**
+ * Execute Perplexity search using OpenAI SDK
+ */
+async function executePerplexitySearch(
+  query: string,
+  model: PerplexityModel = 'sonar-pro',
+  systemPrompt: string = 'You are a helpful research assistant. Provide accurate, well-sourced information.'
+) {
+  const client = getPerplexityClient();
 
   console.log('[perplexityResearch] Executing search:', {
-    query: query.substring(0, 100) + '...',
+    query: query.substring(0, 100) + (query.length > 100 ? '...' : ''),
     model,
-    filters: {
-      domains: searchDomainFilter?.length || 0,
-      recency: searchRecencyFilter,
-    },
   });
 
   try {
-    const response = await fetch(PERPLEXITY_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-      },
-      body: JSON.stringify(payload),
+    const response = await client.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt,
+        },
+        {
+          role: 'user',
+          content: query,
+        },
+      ],
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Perplexity API error (${response.status}): ${errorText}`);
-    }
-
-    const data: PerplexityResponse = await response.json();
+    const answer = response.choices[0]?.message?.content || 'No answer received';
+    const usage = response.usage;
 
     console.log('[perplexityResearch] Search completed:', {
-      tokensUsed: data.usage?.total_tokens || 0,
-      citationsCount: data.citations?.length || 0,
-      relatedQuestionsCount: data.related_questions?.length || 0,
+      tokensUsed: usage?.total_tokens || 0,
+      model: response.model,
     });
 
-    return data;
+    return {
+      success: true,
+      answer,
+      metadata: {
+        model: response.model,
+        tokensUsed: usage?.total_tokens || 0,
+        promptTokens: usage?.prompt_tokens || 0,
+        completionTokens: usage?.completion_tokens || 0,
+      },
+    };
   } catch (error) {
     console.error('[perplexityResearch] Search failed:', error);
     throw error;
@@ -182,69 +102,56 @@ async function executePerplexitySearch(
 /**
  * Perplexity Research Tool Definition
  *
- * This tool can be added to any agent that needs web research capabilities.
+ * Simple, reusable tool for web research using Perplexity AI.
  */
 export const perplexityResearch = tool({
   name: 'perplexityResearch',
   description: `Search and synthesize information from the web using Perplexity AI.
 
 This tool provides real-time access to web information with AI-powered synthesis.
+
 Use it when you need to:
 - Research current events or recent information
 - Find factual data from reliable sources
-- Get comprehensive answers with citations
-- Explore topics that require web search
+- Get comprehensive answers about topics you're uncertain about
+- Look up technical documentation or API details
+- Verify or expand your knowledge on a subject
 
-The tool returns:
-- Synthesized answer from multiple sources
-- Citations and source URLs
-- Related questions for further research
+The tool returns synthesized answers with web context.
 
 Best practices:
-- Be specific in your query
+- Be specific and clear in your query
 - Use natural language questions
-- Specify recency if time-sensitive (e.g., "last week")
-- Use domain filters for specialized searches
+- For technical topics, include relevant context
 
 Example queries:
-- "What are the latest developments in AI agents?"
-- "Compare Next.js 14 vs Next.js 15 features"
-- "Best practices for TypeScript error handling"`,
+- "What are the latest features in Next.js 15?"
+- "Explain React Server Components"
+- "How to handle errors in TypeScript async functions"
+- "Current trends in AI agent development"`,
 
   parameters: {
     type: 'object',
     properties: {
       query: {
         type: 'string',
-        description: 'The research query or question to search for. Be specific and use natural language.',
+        description: 'The research query or question. Be specific and use natural language.',
       },
       model: {
         type: 'string',
-        enum: ['sonar', 'sonar-pro'],
-        description: 'Perplexity model to use. "sonar" is fast and cost-effective, "sonar-pro" provides deeper research. Default: sonar',
+        enum: ['sonar', 'sonar-pro', 'sonar-reasoning-pro'],
+        description: 'Perplexity model: "sonar" (fast), "sonar-pro" (default, balanced), "sonar-reasoning-pro" (deep analysis)',
       },
-      searchRecency: {
+      systemPrompt: {
         type: 'string',
-        enum: ['month', 'week', 'day', 'hour'],
-        description: 'Filter results by recency. Use for time-sensitive queries. Optional.',
-      },
-      searchDomains: {
-        type: 'array',
-        items: {
-          type: 'string',
-        },
-        description: 'Filter results to specific domains (e.g., ["github.com", "stackoverflow.com"]). Optional.',
-      },
-      maxTokens: {
-        type: 'number',
-        description: 'Maximum tokens for response. Default: 2000. Increase for more detailed answers.',
+        description: 'Optional custom system prompt to guide the research focus',
       },
     },
     required: ['query'],
     additionalProperties: false,
   },
 
-  execute: async (input, details) => {
+  execute: async (input: unknown, _details?: unknown) => {
     // Type guard and validation
     if (!input || typeof input !== 'object' || !('query' in input) || typeof input.query !== 'string') {
       return {
@@ -253,15 +160,13 @@ Example queries:
       };
     }
 
-    const { query, model, searchRecency, searchDomains, maxTokens } = input as {
+    const { query, model, systemPrompt } = input as {
       query: string;
       model?: PerplexityModel;
-      searchRecency?: 'month' | 'week' | 'day' | 'hour';
-      searchDomains?: string[];
-      maxTokens?: number;
+      systemPrompt?: string;
     };
 
-    // Validate query length
+    // Validate query
     if (query.trim().length === 0) {
       return {
         success: false,
@@ -269,56 +174,60 @@ Example queries:
       };
     }
 
-    if (query.length > 2000) {
+    if (query.length > 4000) {
       return {
         success: false,
-        error: 'Query is too long (max 2000 characters)',
+        error: 'Query is too long (max 4000 characters)',
       };
     }
 
     try {
-      const result = await executePerplexitySearch(query, {
-        model,
-        maxTokens,
-        returnCitations: true,
-        returnRelatedQuestions: true,
-        searchDomainFilter: searchDomains,
-        searchRecencyFilter: searchRecency,
-      });
+      const result = await executePerplexitySearch(
+        query,
+        model || 'sonar-pro',
+        systemPrompt
+      );
 
-      // Extract the answer from the response
-      const answer = result.choices[0]?.message?.content || 'No answer received';
-
-      return {
-        success: true,
-        answer,
-        citations: result.citations || [],
-        relatedQuestions: result.related_questions || [],
-        metadata: {
-          model: result.model,
-          tokensUsed: result.usage?.total_tokens || 0,
-          promptTokens: result.usage?.prompt_tokens || 0,
-          completionTokens: result.usage?.completion_tokens || 0,
-        },
-      };
+      return result;
     } catch (error) {
       console.error('[perplexityResearch] Execution error:', error);
+
+      // Handle specific error types
+      if (error instanceof Error) {
+        if (error.message.includes('API_KEY')) {
+          return {
+            success: false,
+            error: 'Perplexity API key is not configured. Please add PERPLEXITY_API_KEY to your environment variables.',
+          };
+        }
+
+        if (error.message.includes('rate limit')) {
+          return {
+            success: false,
+            error: 'Perplexity API rate limit reached. Please try again later.',
+          };
+        }
+
+        return {
+          success: false,
+          error: `Research failed: ${error.message}`,
+        };
+      }
+
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred during research',
+        error: 'Unknown error occurred during research',
       };
     }
   },
 });
 
 /**
- * Export type for tool response (useful for type checking in consuming code)
+ * Export type for tool response
  */
 export type PerplexityResearchResult = {
   success: boolean;
   answer?: string;
-  citations?: string[];
-  relatedQuestions?: string[];
   metadata?: {
     model: string;
     tokensUsed: number;
