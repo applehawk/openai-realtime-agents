@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## General Guidelines
+
+**Documentation Policy:**
+- Do NOT create a new markdown file to document each change or summarize your work unless specifically requested by the user.
+- Only create documentation when explicitly asked or when it's critical for understanding complex architectural changes.
+- Focus on making code changes rather than writing reports about them.
+
 ## Overview
 
 This is a Next.js TypeScript demonstration of advanced voice agent patterns using the OpenAI Realtime API and the OpenAI Agents SDK (`@openai/agents`). The project showcases two main agentic patterns: **Chat-Supervisor** (a realtime chat agent backed by a more intelligent supervisor for complex tasks) and **Sequential Handoff** (specialized agents that transfer users between them).
@@ -85,10 +92,6 @@ The chat agent explicitly defers to the supervisor via `getNextResponseFromSuper
 ### Sequential Handoff Pattern
 
 Agents can transfer users between each other using tool-based handoffs. The agent graph is defined by `handoffs` arrays in each agent config. When an agent calls a transfer tool, a `session.update` event changes instructions and available tools for the new agent.
-
-### Guardrails
-
-Output guardrails (`src/app/agentConfigs/guardrails.ts`) use OpenAI's Moderation API to check assistant messages before delivery. Guardrail events (`guardrail_tripped`) are handled in `App.tsx` and displayed in the UI.
 
 ## Key Files to Understand
 

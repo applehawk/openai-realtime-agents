@@ -669,14 +669,19 @@ export class TaskOrchestrator {
  */
 export function formatTaskTreeForDisplay(task: Task, indent: number = 0): string {
   const prefix = '  '.repeat(indent);
-  const statusIcon = {
+  const statusIconMap: Record<TaskStatus, string> = {
     planned: '⏱',
     in_progress: '⏳',
     completed: '✓',
     failed: '✗',
+    needUserInput: '❓',      // v2.0 - waiting for user input
+    needsResearch: '🔍',      // v2.0 - requires web research
+    researchFailed: '🔎',     // v2.0 - research failed
+    toolError: '⚠️',          // v2.0 - MCP tool error
     blocked: '🔒',
     skipped: '⏭',
-  }[task.status];
+  };
+  const statusIcon = statusIconMap[task.status];
 
   let output = `${prefix}${statusIcon} ${task.description}\n`;
 
