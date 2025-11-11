@@ -23,7 +23,11 @@ import { useRealtimeSession } from "./hooks/useRealtimeSession";
 
 // Agent configs
 // import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
-import { chatSeverstalAssistantScenario, mcpServerManager } from "@/app/agentConfigs/severstalAssistantAgent";
+import {
+  chatSeverstalAssistantScenario,
+  mcpServerManager,
+  getCurrentRouterAgent,
+} from "@/app/agentConfigs/severstalAssistantAgent";
 
 import useAudioDownload from "./hooks/useAudioDownload";
 import { useHandleSessionHistory } from "./hooks/useHandleSessionHistory";
@@ -262,9 +266,16 @@ function App() {
         console.error('[App] ❌ Error fetching user info:', userError);
       }
 
+      // Get the current router agent (may have MCP servers after initialization)
+      const currentRouterAgent = getCurrentRouterAgent();
+      console.log('[App] 📡 Using router agent for session:', {
+        name: currentRouterAgent.name,
+        mcpServersCount: currentRouterAgent.mcpServers?.length || 0,
+      });
+
       await connect({
         getEphemeralKey: async () => EPHEMERAL_KEY,
-        initialAgents: chatSeverstalAssistantScenario,
+        initialAgents: [currentRouterAgent], // Use current agent with MCP servers
         audioElement: sdkAudioElement,
         outputGuardrails: [],
         extraContext: {

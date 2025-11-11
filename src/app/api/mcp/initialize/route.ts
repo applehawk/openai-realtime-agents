@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { mcpServerManager } from '@/app/agentConfigs/severstalAssistantAgent';
 
 // Use internal Docker network URL for server-side requests
 const AUTH_API_BASE = process.env.AUTH_API_BASE || 'http://multiagent_app:7000/api/v1';
 
+/**
+ * NOTE: This endpoint is for testing purposes only.
+ *
+ * Actual MCP initialization happens CLIENT-SIDE in UserProfile.tsx via:
+ * - initializeMCPServersBeforeAgent()
+ * - mcpServerManager.fetchAndInitialize()
+ * - Agent recreation with connected MCP servers
+ *
+ * This endpoint just verifies container status from server-side.
+ */
 export async function POST(_request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -19,7 +28,7 @@ export async function POST(_request: NextRequest) {
 
     console.log('[api/mcp/initialize] Fetching container status...');
 
-    // Fetch container status from backend
+    // Fetch container status from backend (server-to-server)
     const response = await fetch(`${AUTH_API_BASE}/containers/status`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -44,30 +53,23 @@ export async function POST(_request: NextRequest) {
       );
     }
 
-    // Initialize MCP server
-    console.log('[api/mcp/initialize] Initializing MCP server...');
-    const mcpServer = await mcpServerManager.initialize(containerStatus);
+    // Container is ready - actual MCP initialization happens client-side
+    const isReady = containerStatus.running && containerStatus.health === 'healthy';
 
-    if (!mcpServer) {
-      return NextResponse.json(
-        { error: 'Failed to initialize MCP server' },
-        { status: 500 }
-      );
-    }
-
-    console.log('[api/mcp/initialize] MCP server initialized successfully');
+    console.log('[api/mcp/initialize] Container ready for MCP initialization:', isReady);
 
     return NextResponse.json({
       success: true,
-      message: 'MCP server initialized successfully',
+      message: 'Container is ready. MCP initialization happens client-side via initializeMCPServersBeforeAgent()',
       containerStatus,
-      connected: mcpServerManager.isServerConnected(),
+      ready: isReady,
+      note: 'Client-side code in UserProfile.tsx will create and connect MCP server, then recreate agent',
     });
   } catch (error: any) {
     console.error('[api/mcp/initialize] Error:', error);
     return NextResponse.json(
       {
-        error: 'Failed to initialize MCP server',
+        error: 'Failed to check container status',
         details: error.message,
         stack: error.stack,
       },
