@@ -4,9 +4,48 @@ import {
   updateProjectField as mcpUpdateProjectField,
   getProject as mcpGetProject,
   deleteProject as mcpDeleteProject,
+  Project,
 } from '@/app/lib/projectsMcpClient';
 
 type WizardMode = 'create' | 'update_status' | 'get_info' | 'delete';
+
+/**
+ * Форматирует информацию о проекте в красивую markdown-таблицу
+ */
+function formatProjectAsTable(project: Project): string {
+  const formatValue = (value: string | null | undefined): string => {
+    if (!value || value.trim() === '') return '—';
+    return value.trim();
+  };
+
+  const formatDate = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return '—';
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('ru-RU', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  return `## 📋 Информация о проекте
+
+| Параметр | Значение |
+|----------|----------|
+| **Название** | ${formatValue(project.name)} |
+| **Описание** | ${formatValue(project.description)} |
+| **Руководитель** | ${formatValue(project.manager)} |
+| **Команда** | ${formatValue(project.team)} |
+| **Статус** | ${formatValue(project.status)} |
+| **Создан** | ${formatDate(project.created_at)} |
+| **Обновлён** | ${formatDate(project.updated_at)} |`;
+}
 
 export const projectWizard = tool({
   name: 'projectWizard',
@@ -354,10 +393,11 @@ export const projectWizard = tool({
         if (!project) {
           return { status: 'error', message: 'Проект не найден. Уточните название или создайте новый.', state };
         }
+        const formattedTable = formatProjectAsTable(project);
         return {
           status: 'completed',
-          message: 'Информация о проекте получена',
-          data: { project },
+          message: formattedTable,
+          data: { project, formattedTable },
           state,
         };
       } catch (e: any) {

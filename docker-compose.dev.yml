@@ -38,6 +38,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - app-network-dev
+      - oma-network-dev
     logging:
       driver: "json-file"
       options:
@@ -53,4 +54,6 @@ services:
 networks:
   app-network-dev:
     external: true  # используем сеть, созданную вручную: docker network create app-network-dev
+  oma-network-dev:
+    external: true  # используем уже существующую сеть
 
