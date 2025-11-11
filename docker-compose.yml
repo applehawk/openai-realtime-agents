@@ -9,8 +9,9 @@ services:
         - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-https://rndaibot.ru/apib/v1/}
     container_name: oma-frontend
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    # Порт больше не экспонируем наружу, только для nginx
+    expose:
+      - "3000"
     env_file:
       - .env
     environment:
@@ -52,6 +53,8 @@ services:
 
 networks:
   app-network:
-    driver: bridge
+    external: true  # создается автоматически в Makefile или вручную: docker network create app-network
+  app-network-dev:
+    external: true  # создается автоматически в Makefile или вручную: docker network create app-network-dev
   oma-network:
     external: true  # 👈 используем уже существующую сеть

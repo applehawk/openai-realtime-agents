@@ -17,15 +17,22 @@ import {
   initializeMCPServersBeforeAgent,
   cleanupMCPServer,
   mcpServerManager,
+  getCurrentRouterAgent,
 } from './agents/routerAgent';
 
-// MCP Server should be initialized BEFORE app loads and agent is used
+// MCP Server should be initialized BEFORE creating RealtimeSession
 // Call initializeMCPServersBeforeAgent() after user authentication, before using the agent
+// This will recreate the agent with connected MCP servers
 
-// Export the Router Agent as main agent
+// Export the Router Agent as main agent (initial instance without MCP)
 export const severstalAssistant = routerAgent;
 
+// Export function to get current agent (may have MCP servers after initialization)
+export { getCurrentRouterAgent };
+
 // Export scenario for use in App
+// Note: This will contain the initial agent, but App should use getCurrentRouterAgent()
+// after MCP initialization
 export const chatSeverstalAssistantScenario = routerScenario;
 
 // Export MCP server management functions

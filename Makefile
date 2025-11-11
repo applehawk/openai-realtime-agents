@@ -1,13 +1,15 @@
 # Переменные для docker-compose файлов
-DEV_COMPOSE = docker compose -f docker-compose.dev.yml
-PROD_COMPOSE = docker compose -f docker-compose.yml
+# Используем разные имена проектов для разделения окружений
+DEV_COMPOSE = docker compose -f docker-compose.dev.yml -p oma-frontend-dev
+PROD_COMPOSE = docker compose -f docker-compose.yml -p oma-frontend-prod
+NGINX_COMPOSE = docker compose -f docker-compose.nginx.yml -p oma-frontend-nginx
 
 # Цвета для вывода
 GREEN  := $(shell tput -Txterm setaf 2)
 YELLOW := $(shell tput -Txterm setaf 3)
 RESET  := $(shell tput -Txterm sgr0)
 
-.PHONY: help install dev-npm build start lint test-api-key dev prod stop-dev stop-prod stop-all build-dev build-prod dev-logs prod-logs restart-dev restart-prod shell-dev shell-prod updown mcp-test mcp-stop mcp-logs mcp-restart
+.PHONY: help install dev-npm build start lint test-api-key dev prod stop-dev stop-prod stop-all build-dev build-prod dev-logs prod-logs restart-dev restart-prod shell-dev shell-prod updown nginx nginx-start nginx-stop nginx-restart nginx-reload nginx-logs nginx-shell nginx-test mcp-test mcp-stop mcp-logs mcp-restart
 
 help: ## Показать справку по командам
 	@echo "$(GREEN)Доступные команды:$(RESET)"
@@ -33,27 +35,44 @@ lint: ## Запустить линтер
 dev: ## Запустить dev окружение
 	@echo "$(GREEN)Запуск dev окружения...$(RESET)"
 	@echo "Используется docker-compose.dev.yml и .env.dev"
-	$(DEV_COMPOSE) down && $(DEV_COMPOSE) up --build -d
+	@if ! docker network inspect app-network-dev >/dev/null 2>&1; then \
+		echo "$(YELLOW)Создание сети app-network-dev...$(RESET)"; \
+		docker network create app-network-dev; \
+	fi
+	@docker stop openai-realtime-agents-dev 2>/dev/null || true
+	@docker rm -f openai-realtime-agents-dev 2>/dev/null || true
+	$(DEV_COMPOSE) up --build -d
 	@echo "$(GREEN)Dev окружение запущено на порту 3001$(RESET)"
 
 prod: ## Запустить prod окружение
 	@echo "$(GREEN)Запуск prod окружения...$(RESET)"
 	@echo "Используется docker-compose.yml и .env"
-	$(PROD_COMPOSE) down && $(PROD_COMPOSE) up --build -d
+	@if ! docker network inspect app-network >/dev/null 2>&1; then \
+		echo "$(YELLOW)Создание сети app-network...$(RESET)"; \
+		docker network create app-network; \
+	fi
+	@docker stop oma-frontend 2>/dev/null || true
+	@docker rm -f oma-frontend 2>/dev/null || true
+	$(PROD_COMPOSE) up --build -d
 	@echo "$(GREEN)Prod окружение запущено на порту 3000$(RESET)"
 
 stop-dev: ## Остановить dev окружение
 	@echo "$(YELLOW)Остановка dev окружения...$(RESET)"
-	$(DEV_COMPOSE) down
+	@docker stop openai-realtime-agents-dev 2>/dev/null || true
+	@docker rm -f openai-realtime-agents-dev 2>/dev/null || true
+	@echo "$(GREEN)Dev окружение остановлено (сети сохранены)$(RESET)"
 
 stop-prod: ## Остановить prod окружение
 	@echo "$(YELLOW)Остановка prod окружения...$(RESET)"
-	$(PROD_COMPOSE) down
+	@docker stop oma-frontend 2>/dev/null || true
+	@docker rm -f oma-frontend 2>/dev/null || true
+	@echo "$(GREEN)Prod окружение остановлено (сети сохранены)$(RESET)"
 
 stop-all: ## Остановить все окружения
 	@echo "$(YELLOW)Остановка всех окружений...$(RESET)"
-	$(DEV_COMPOSE) down
-	$(PROD_COMPOSE) down
+	@docker stop openai-realtime-agents-dev oma-frontend oma-nginx 2>/dev/null || true
+	@docker rm -f openai-realtime-agents-dev oma-frontend oma-nginx 2>/dev/null || true
+	@echo "$(GREEN)Все окружения остановлены (сети сохранены)$(RESET)"
 
 build-dev: ## Пересобрать dev окружение
 	@echo "$(GREEN)Пересборка dev окружения...$(RESET)"
@@ -86,6 +105,65 @@ shell-dev: ## Открыть shell в dev контейнере
 
 shell-prod: ## Открыть shell в prod контейнере
 	$(PROD_COMPOSE) exec realtime-agents sh
+
+# ====== Nginx команды ======
+nginx: ## Запустить nginx (alias для nginx-start)
+	@$(MAKE) nginx-start
+
+nginx-start: ## Запустить nginx
+	@echo "$(GREEN)Запуск nginx...$(RESET)"
+	@echo "Используется docker-compose.nginx.yml"
+	@if ! docker network inspect app-network-dev >/dev/null 2>&1; then \
+		echo "$(YELLOW)Создание сети app-network-dev...$(RESET)"; \
+		docker network create app-network-dev; \
+	fi
+	@if ! docker network inspect app-network >/dev/null 2>&1; then \
+		echo "$(YELLOW)Создание сети app-network...$(RESET)"; \
+		docker network create app-network; \
+	fi
+	$(NGINX_COMPOSE) up -d
+	@echo "$(GREEN)Nginx запущен на портах 80 и 443$(RESET)"
+
+nginx-stop: ## Остановить nginx
+	@echo "$(YELLOW)Остановка nginx...$(RESET)"
+	$(NGINX_COMPOSE) down
+	@echo "$(GREEN)Nginx остановлен$(RESET)"
+
+nginx-restart: ## Перезапустить nginx
+	@echo "$(YELLOW)Перезапуск nginx...$(RESET)"
+	$(NGINX_COMPOSE) restart
+	@echo "$(GREEN)Nginx перезапущен$(RESET)"
+
+nginx-reload: ## Перезагрузить конфигурацию nginx (без перезапуска контейнера)
+	@echo "$(GREEN)Перезагрузка конфигурации nginx...$(RESET)"
+	@if ! docker ps --format '{{.Names}}' | grep -q '^oma-nginx$$'; then \
+		echo "$(YELLOW)Контейнер nginx не запущен. Запустите его сначала: make nginx-start$(RESET)"; \
+		exit 1; \
+	fi
+	$(NGINX_COMPOSE) exec nginx nginx -s reload
+	@echo "$(GREEN)Конфигурация nginx перезагружена$(RESET)"
+
+nginx-logs: ## Показать логи nginx
+	@echo "$(GREEN)Логи nginx (Ctrl+C для выхода)...$(RESET)"
+	$(NGINX_COMPOSE) logs -f --tail 500 nginx
+
+nginx-shell: ## Открыть shell в nginx контейнере
+	@if ! docker ps --format '{{.Names}}' | grep -q '^oma-nginx$$'; then \
+		echo "$(YELLOW)Контейнер nginx не запущен. Запустите его сначала: make nginx-start$(RESET)"; \
+		exit 1; \
+	fi
+	$(NGINX_COMPOSE) exec nginx sh
+
+nginx-test: ## Проверить конфигурацию nginx
+	@echo "$(GREEN)Проверка конфигурации nginx...$(RESET)"
+	@if ! docker ps --format '{{.Names}}' | grep -q '^oma-nginx$$'; then \
+		echo "$(YELLOW)Контейнер nginx не запущен. Запускаю временный контейнер для проверки...$(RESET)"; \
+		docker run --rm -v /etc/nginx/sites-enabled/rndaibot.conf:/etc/nginx/conf.d/rndaibot.conf:ro \
+			-v /etc/nginx/sites-enabled/rndaibotdev.conf:/etc/nginx/conf.d/rndaibotdev.conf:ro \
+			nginx:alpine nginx -t; \
+	else \
+		$(NGINX_COMPOSE) exec nginx nginx -t; \
+	fi
 
 updown: ## Полный цикл: pull, rebuild и restart prod окружения
 	@echo "$(GREEN)========================================$(RESET)"

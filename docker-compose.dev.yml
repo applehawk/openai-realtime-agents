@@ -5,8 +5,9 @@ services:
       dockerfile: Dockerfile
     container_name: openai-realtime-agents-dev
     restart: unless-stopped
-    ports:
-      - "3333:3001"
+    # Порт больше не экспонируем наружу, только для nginx
+    expose:
+      - "3001"
     env_file:
       - .env.dev
     environment:
@@ -45,5 +46,5 @@ services:
 
 networks:
   app-network-dev:
-    driver: bridge
+    external: true  # используем сеть, созданную вручную: docker network create app-network-dev
 
