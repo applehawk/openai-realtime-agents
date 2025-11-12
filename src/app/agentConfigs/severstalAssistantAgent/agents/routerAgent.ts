@@ -19,7 +19,6 @@ import { projectAgent, setProjectAgentHandoff } from './projectAgent';
 
 // Tools for direct execution and delegation
 import { delegateToIntelligentSupervisor } from '../tools/intelligentSupervisorTool'; // Unified supervisor
-import { getTaskContext } from '../tools/getTaskContextTool';
 // import { getCurrentUserInfo } from '../tools/interview/userInfoTool'; // DISABLED - see tools array
 import { updateUserPreferences, queryUserPreferences } from '../tools/rag/userPreferencesTool';
 import { manageUserInterview } from '../tools/interview/interviewTools';

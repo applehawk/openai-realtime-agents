@@ -22,6 +22,7 @@ import { ProgressUpdate } from './useTaskProgress';
 export interface TaskCompletionSyncOptions {
   sessionId: string | null;
   addContextMessage: (role: 'user' | 'assistant' | 'system', content: string) => void;
+  sendUserText?: (text: string) => void; // Optional: Send text to agent to trigger response
   enabled?: boolean;
   syncStepCompletions?: boolean; // Whether to sync individual step completions
 }
@@ -32,11 +33,13 @@ export interface TaskCompletionSyncOptions {
 export function useTaskCompletionSync({
   sessionId,
   addContextMessage,
+  sendUserText,
   enabled = true,
   syncStepCompletions = true,
 }: TaskCompletionSyncOptions) {
   const hasCompletedRef = useRef(false);
   const processedStepsRef = useRef(new Set<string>()); // Track processed steps to avoid duplicates
+  const sentNotificationsRef = useRef(new Set<string>()); // Track sent notifications to avoid duplicates
 
   useEffect(() => {
     if (!sessionId || !enabled) {
@@ -48,6 +51,7 @@ export function useTaskCompletionSync({
     // Reset flags for new session
     hasCompletedRef.current = false;
     processedStepsRef.current.clear();
+    sentNotificationsRef.current.clear();
 
     const eventSource = new EventSource(`/api/supervisor/unified/stream?sessionId=${sessionId}`);
 
@@ -63,7 +67,7 @@ export function useTaskCompletionSync({
         });
 
         // Handle step_completed events (intermediate progress)
-        if (syncStepCompletions && update.type === 'step_completed' && !hasCompletedRef.current) {
+        if (syncStepCompletions && (update.type === 'step_completed' || update.type === 'task_completed') && !hasCompletedRef.current) {
           // Create a unique key for this step to avoid duplicates
           const stepKey = `${update.timestamp}-${update.message}`;
 
@@ -76,14 +80,22 @@ export function useTaskCompletionSync({
               progress: update.progress,
             });
 
-            // Format step completion as a brief context update
-            const stepMessage = `[ШАГ ЗАВЕРШЕН] 
-Session ID: ${update.sessionId}
+            // Format step completion as a brief message
+            const stepMessage = `[ШАГ ЗАВЕРШЕН] Session ID: ${update.sessionId} - ${update.message}`;
 
-${update.message}`;
+            // Add to context for history (only for record keeping)
+            addContextMessage('assistant', stepMessage);
 
-            // Inject into RealtimeSession context
-            addContextMessage('system', stepMessage);
+            // DISABLED: Agent notification for step completion
+            // Reason: Causes infinite loops - agent responds to every step, triggering new events
+            // Future: Re-enable only for critical steps or with rate limiting
+            const notificationKey = `step-${stepKey}`;
+            if (sendUserText && !sentNotificationsRef.current.has(notificationKey)) {
+              sentNotificationsRef.current.add(notificationKey);
+              const agentNotification = `Шаг задачи завершен (Session ID: ${update.sessionId}): ${update.message}. Прокомментируй прогресс кратко.`;
+              console.log('[useTaskCompletionSync] Sending step completion to agent:', agentNotification);
+              sendUserText(agentNotification);
+            }
 
             console.log('[useTaskCompletionSync] Step progress sent to RealtimeSession');
           }
@@ -116,8 +128,16 @@ ${finalResult?.workflowSteps && finalResult.workflowSteps.length > 0 ? `\nВып
 
 ${finalResult?.plannedSteps && finalResult.plannedSteps.length > 0 ? `\nЗапланированные шаги:\n${finalResult.plannedSteps.map((step: string, i: number) => `${i + 1}. ${step}`).join('\n')}` : ''}`;
 
-          // Inject into RealtimeSession context
-          addContextMessage('system', contextMessage);
+          // Add to context for history
+          addContextMessage('assistant', contextMessage);
+
+          const notificationKey = `completion-${update.sessionId}`;
+          if (sendUserText && !sentNotificationsRef.current.has(notificationKey)) {
+            sentNotificationsRef.current.add(notificationKey);
+            const agentNotification = `Задача завершена (Session ID: ${update.sessionId}). ${finalResult?.nextResponse || 'Задача успешно выполнена'}. Сообщи пользователю о результате.`;
+            sendUserText(agentNotification);
+            console.log('[useTaskCompletionSync] Sent completion to agent:', agentNotification);
+          }
 
           console.log('[useTaskCompletionSync] Context message sent to RealtimeSession');
 
@@ -139,5 +159,5 @@ ${finalResult?.plannedSteps && finalResult.plannedSteps.length > 0 ? `\nЗапл
       console.log('[useTaskCompletionSync] Cleaning up SSE connection for session:', sessionId);
       eventSource.close();
     };
-  }, [sessionId, addContextMessage, enabled]);
+  }, [sessionId, addContextMessage, sendUserText, enabled, syncStepCompletions]);
 }

@@ -16,7 +16,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 
 export interface ProgressUpdate {
   sessionId: string;
-  type: 'connected' | 'started' | 'complexity_assessed' | 'strategy_selected' | 'step_started' | 'step_completed' | 'completed' | 'error';
+  type: 'connected' | 'started' | 'complexity_assessed' | 'strategy_selected' | 'step_started' | 'step_completed' | 'completed' | 'error' | 'task_completed';
   message: string;
   progress: number;
   currentStep?: number;

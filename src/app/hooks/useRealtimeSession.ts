@@ -3,6 +3,7 @@ import {
   RealtimeSession,
   RealtimeAgent,
   OpenAIRealtimeWebRTC,
+  RealtimeMessageItem,
 } from '@openai/agents/realtime';
 
 import { audioFormatForCodec, applyCodecPreferences } from '../lib/codecUtils';
@@ -41,7 +42,7 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
       callbacks.onConnectionChange?.(s);
       logClientEvent({}, s);
     },
-    [callbacks],
+    [callbacks, logClientEvent],
   );
 
   const { logServerEvent } = useEvent();
@@ -145,12 +146,12 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
     [],
   );
 
-  const handleAgentHandoff = (item: any) => {
+  const handleAgentHandoff = useCallback((item: any) => {
     const history = item.context.history;
     const lastMessage = history[history.length - 1];
     const agentName = lastMessage.name.split("transfer_to_")[1];
     callbacks.onAgentHandoff?.(agentName);
-  };
+  }, [callbacks]);
 
   useEffect(() => {
     const session = sessionRef.current;
@@ -392,67 +393,67 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
     try {
       console.log('[useRealtimeSession] Adding context message to session:', { role, contentLength: content.length });
 
-      // Use updateHistory to append the new message to existing history
-      sessionRef.current.updateHistory((currentHistory: any[]) => {
-        // Generate unique item ID
-        const itemId = `msg_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      // Get current history using the history getter accessor
+      const currentHistory = sessionRef.current.history;
 
-        // Create a new message item with proper structure based on role
-        let newItem: any;
+      // Generate unique item ID
+      const itemId = `msg_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-        if (role === 'system') {
-          // System message structure
-          // Note: Even system messages need 'type' field in content according to OpenAI Realtime API
-          newItem = {
-            type: 'message' as const,
-            role: 'system' as const,
-            itemId,
-            content: [
-              {
-                type: 'input_text' as const, // System messages also require type field
-                text: content,
-              },
-            ],
-          };
-        } else if (role === 'user') {
-          // User message structure
-          newItem = {
-            type: 'message' as const,
-            role: 'user' as const,
-            itemId,
-            status: 'completed' as const,
-            content: [
-              {
-                type: 'input_text' as const,
-                text: content,
-              },
-            ],
-          };
-        } else {
-          // Assistant message structure
-          newItem = {
-            type: 'message' as const,
-            role: 'assistant' as const,
-            itemId,
-            status: 'completed' as const,
-            content: [
-              {
-                type: 'output_text' as const,
-                text: content,
-              },
-            ],
-          };
-        }
+      // Create a new message item with proper RealtimeMessageItem structure based on role
+      let newItem: RealtimeMessageItem;
 
-        console.log('[useRealtimeSession] Appending message to history:', {
-          currentHistoryLength: currentHistory.length,
-          newItemId: itemId,
-          role,
-        });
+      if (role === 'system') {
+        // System message: RealtimeMessageItem with role "system"
+        // System messages don't have 'status' field
+        newItem = {
+          type: 'message',
+          role: 'system',
+          itemId,
+          content: [
+            {
+              type: 'input_text',
+              text: content,
+            },
+          ],
+        } as RealtimeMessageItem;
+      } else if (role === 'user') {
+        // User message: RealtimeMessageItem with role "user"
+        newItem = {
+          type: 'message',
+          role: 'user',
+          itemId,
+          status: 'completed',
+          content: [
+            {
+              type: 'input_text',
+              text: content,
+            },
+          ],
+        } as RealtimeMessageItem;
+      } else {
+        // Assistant message: RealtimeMessageItem with role "assistant"
+        newItem = {
+          type: 'message',
+          role: 'assistant',
+          itemId,
+          status: 'completed',
+          content: [
+            {
+              type: 'output_text',
+              text: content,
+            },
+          ],
+        } as RealtimeMessageItem;
+      }
 
-        // Return updated history with new message appended
-        return [...currentHistory, newItem];
+      console.log('[useRealtimeSession] Appending message to history:', {
+        currentHistoryLength: currentHistory.length,
+        newItemId: itemId,
+        role,
       });
+
+      // Use updateHistory with new array (not callback)
+      sessionRef.current.updateHistory([...currentHistory, newItem]);
 
       console.log('[useRealtimeSession] Context message added successfully to history');
     } catch (error) {

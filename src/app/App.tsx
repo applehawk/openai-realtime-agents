@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 
@@ -38,12 +38,6 @@ function App() {
   
   // Debug: Check if SKIP_GOOGLE_CONNECT_MCP is set
   const skipGoogleConnectMcp = process.env.NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP === 'true';
-  if (typeof window !== 'undefined') {
-    console.log('[App] Environment check:', {
-      NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP: process.env.NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP,
-      skipGoogleConnectMcp,
-    });
-  }
 
   // ---------------------------------------------------------------------
   // Codec selector – lets you toggle between wide-band Opus (48 kHz)
@@ -94,6 +88,16 @@ function App() {
     }
   }, [sdkAudioElement]);
 
+  // Memoize callbacks to prevent unnecessary re-renders
+  const handleConnectionChange = useCallback((s: SessionStatus) => {
+    setSessionStatus(s);
+  }, []);
+
+  const handleAgentHandoff = useCallback((agentName: string) => {
+    handoffTriggeredRef.current = true;
+    setSelectedAgentName(agentName);
+  }, []);
+
   const {
     connect,
     disconnect,
@@ -103,11 +107,8 @@ function App() {
     interrupt,
     mute,
   } = useRealtimeSession({
-    onConnectionChange: (s) => setSessionStatus(s as SessionStatus),
-    onAgentHandoff: (agentName: string) => {
-      handoffTriggeredRef.current = true;
-      setSelectedAgentName(agentName);
-    },
+    onConnectionChange: handleConnectionChange,
+    onAgentHandoff: handleAgentHandoff,
   });
 
   const [sessionStatus, setSessionStatus] =
@@ -157,6 +158,7 @@ function App() {
   useTaskCompletionSync({
     sessionId: activeSessionId,
     addContextMessage,
+    sendUserText, // Send notifications to agent so it can react
     enabled: sessionStatus === 'CONNECTED',
     syncStepCompletions: true, // Sync intermediate step completions
   });
@@ -199,7 +201,7 @@ function App() {
     return () => {
       window.removeEventListener('mcp:ready', onMcpReady);
     };
-  }, [selectedAgentName, sessionStatus, skipGoogleConnectMcp]);
+  }, [selectedAgentName]);
 
   // useEffect(() => {
   //   if (selectedAgentName && sessionStatus === "DISCONNECTED") {
@@ -315,11 +317,11 @@ function App() {
           addTaskProgressMessage,
           updateTaskProgress,
           // Allow agents to access task context from IntelligentSupervisor
-          getTaskContext: async (sessionId: string) => {
-            // Import dynamically to avoid circular dependencies
-            const { taskContextStore } = await import('./api/supervisor/unified/taskContextStore');
-            return taskContextStore.getContext(sessionId);
-          },
+          // getTaskContext: async (sessionId: string) => {
+          //   // Import dynamically to avoid circular dependencies
+          //   const { taskContextStore } = await import('./api/supervisor/unified/taskContextStore');
+          //   return taskContextStore.getContext(sessionId);
+          // },
           // Include user info in context so tools can access it without async fetch
           currentUser: currentUser ? {
             userId: currentUser.id,
