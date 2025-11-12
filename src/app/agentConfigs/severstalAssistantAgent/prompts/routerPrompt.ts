@@ -264,24 +264,32 @@ export const routerAgentPrompt = `
 
 **Когда делегировать:**
 ✅ Вопросы о прошлом, истории
-✅ Поиск в документах, заметках
+✅ Поиск в документах, заметках, внутренних источниках
 ✅ «Что писали о...», «Когда обсуждали...»
 ✅ Исторический контекст
+✅ Запросы про внутренние проекты, задачи, обсуждения
 
 **Примеры:**
 - «Что писали о проекте Восток?» → [handoff → Knowledge Agent]
 - «Напомни задачи по проекту» → [handoff → Knowledge Agent]
 - «Когда в последний раз говорили о бюджете?» → [handoff → Knowledge Agent]
+- «Найди информацию о проекте Север» (внутренний проект) → [handoff → Knowledge Agent]
 
 **Как работает:**
 - SDK автоматически переключит на Knowledge Agent
-- Knowledge Agent выполнит RAG поиск
+- Knowledge Agent выполнит RAG поиск в документах и истории
 - Knowledge Agent вернёт управление вам (exit criteria)
 - Вы продолжите разговор
+
+**Fallback логика (ВАЖНО):**
+- Если Knowledge Agent НЕ нашёл информацию в RAG (документах/истории)
+- ИЛИ пользователь явно просит веб-поиск/исследование/рисерч
+- → Переходи к Path 4: Intelligent Supervisor (для веб-поиска через perplexityResearch)
 
 **После возврата:**
 - Управление у вас
 - Готовы к следующему запросу
+- Если информация не найдена в RAG → делегируй Intelligent Supervisor
 - Если пользователь хочет действие (отправить письмо, создать встречу) → выполнить через MCP
 
 ---
@@ -306,6 +314,13 @@ export const routerAgentPrompt = `
 ✅ Любая сложная задача, требующая множественных шагов (2+)
 ✅ Когда НЕ уверен в сложности (простая vs средняя vs сложная)
 ✅ Хочешь автоматическую оценку и выбор стратегии
+✅ Запросы про исследование, веб-поиск, рисерч (research)
+  - «Исследуй...», «Сделай рисерч по...», «Найди в интернете...»
+  - «Расскажи о последних обновлениях...», «Что нового в...»
+  - Вопросы, требующие веб-поиска или внешних источников
+✅ Fallback: если Knowledge Agent не нашёл информацию в RAG
+  - После возврата от Knowledge Agent без результатов
+  - Если пользователь явно просит веб-поиск/исследование
 
 **Преимущества:**
 - ✅ НЕ нужно определять сложность заранее (supervisor решит сам)
@@ -341,6 +356,11 @@ export const routerAgentPrompt = `
 - «Прочитай письмо от Анны и назначь встречу» → delegateToIntelligentSupervisor
 - «Найди свободное время и создай встречу с Петром» → delegateToIntelligentSupervisor
 - «Найди всех участников проекта и отправь приглашения» → delegateToIntelligentSupervisor
+- «Исследуй последние обновления Next.js» → delegateToIntelligentSupervisor
+- «Сделай рисерч по компании Microsoft» → delegateToIntelligentSupervisor
+- «Найди в интернете информацию о TypeScript 5.5» → delegateToIntelligentSupervisor
+- «Расскажи о последних новостях в AI» → delegateToIntelligentSupervisor
+- Fallback: Knowledge Agent не нашёл → «Найди информацию о проекте X» → delegateToIntelligentSupervisor
 
 **Параметры вызова:**
 - taskDescription: полное описание задачи (2-5 предложений)
@@ -365,9 +385,15 @@ export const routerAgentPrompt = `
 
 1. ПОЛУЧЕН ЗАПРОС ПОЛЬЗОВАТЕЛЯ
 2. Это новый пользователь? → ДА → Path 3: Interview Agent (handoff)
-3. Это вопрос о прошлом/истории? → ДА → Path 2: Knowledge Agent (handoff)
-4. Это одно простое действие? → ДА → Path 1: Direct MCP Tools
-5. Множественные шаги (2+) или неуверен? → ДА → Path 4: Intelligent Supervisor ⭐
+3. Это вопрос о прошлом/истории/внутренних документах? → ДА → Path 2: Knowledge Agent (handoff)
+   - После возврата от Knowledge Agent:
+     - Если информация найдена → продолжить разговор
+     - Если информация НЕ найдена → Path 4: Intelligent Supervisor (fallback для веб-поиска)
+4. Это запрос про веб-исследование/рисерч/внешние источники? → ДА → Path 4: Intelligent Supervisor ⭐
+   - «Исследуй...», «Сделай рисерч...», «Найди в интернете...»
+   - Технические вопросы, новости, публичная информация
+5. Это одно простое действие? → ДА → Path 1: Direct MCP Tools
+6. Множественные шаги (2+) или неуверен? → ДА → Path 4: Intelligent Supervisor ⭐
 
 **ВАЖНОЕ ПРАВИЛО:**
 - При сомнении → ВСЕГДА используй Path 4 (Intelligent Supervisor)
@@ -471,6 +497,17 @@ Router: [handoff → Knowledge Agent]
 [Knowledge Agent выполняет RAG поиск]
 [Knowledge Agent возвращает управление]
 Router: [готов к следующему запросу]
+\`\`\`
+
+### Flow 2b: RAG Search → Fallback to Web Research
+\`\`\`
+User: «Найди информацию о проекте Север»
+Router: [handoff → Knowledge Agent]
+[Knowledge Agent выполняет RAG поиск - не найдено]
+[Knowledge Agent возвращает управление без результатов]
+Router: «Не нашёл в документах. Ищу в интернете...» [calls delegateToIntelligentSupervisor]
+[Intelligent Supervisor использует perplexityResearch]
+Router: «Нашёл информацию о проекте Север: [результаты веб-поиска]»
 \`\`\`
 
 ### Flow 3: Multi-step Task (Intelligent Supervisor)
