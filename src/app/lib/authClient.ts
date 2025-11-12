@@ -14,19 +14,15 @@ const normalizeBaseUrl = (url: string | undefined): string | undefined => {
  * Выбор базового URL в зависимости от окружения исполнения.
  * - На сервере (Node) используем AUTH_API_BASE (не public) — внутренний Docker hostname.
  * - В браузере используем NEXT_PUBLIC_AUTH_API_URL (public или относительный).
+ * Вызывается лениво во время выполнения, а не во время сборки.
  */
-const getAuthApiBase = (): string | undefined => {
+const getAuthApiBase = (): string => {
   // серверная среда (Node) — используем AUTH_API_BASE
   if (typeof window === 'undefined') {
     const internal = normalizeBaseUrl(process.env.AUTH_API_BASE);
-    // if (!internal) {
-    //   // fallback: если не задан AUTH_API_BASE, пробуем NEXT_PUBLIC (чтобы не сломать dev)
-    //   const fallback = normalizeBaseUrl(process.env.NEXT_PUBLIC_AUTH_API_URL || process.env.AUTH_API_BASE);
-    //   if (!fallback) {
-    //     throw new Error('AUTH_API_BASE is not set for server-side requests');
-    //   }
-    //   return fallback;
-    // }
+    if (!internal) {
+      throw new Error('AUTH_API_BASE is not set for server-side requests. Please add AUTH_API_BASE to your .env file.');
+    }
     return internal;
   }
 
@@ -34,8 +30,6 @@ const getAuthApiBase = (): string | undefined => {
   const publicUrl = normalizeBaseUrl(process.env.NEXT_PUBLIC_AUTH_API_URL) || '/';
   return publicUrl;
 };
-
-const AUTH_API_BASE = getAuthApiBase();
 
 export interface LoginCredentials {
   username: string;
@@ -61,12 +55,13 @@ export interface TokenResponse {
 async function authFetch(endpoint: string, options: RequestInit = {}) {
   // Remove leading slash from endpoint if present to avoid double slashes
   const normalizedEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
-  const url = `${AUTH_API_BASE}${normalizedEndpoint}`;
+  const authApiBase = getAuthApiBase();
+  const url = `${authApiBase}${normalizedEndpoint}`;
 
   console.log('authFetch:', {
     endpoint,
     normalizedEndpoint,
-    AUTH_API_BASE,
+    AUTH_API_BASE: authApiBase,
     url,
     method: options.method || 'GET'
   });

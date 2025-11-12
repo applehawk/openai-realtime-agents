@@ -35,6 +35,15 @@ import { useTaskCompletionSync } from "./hooks/useTaskCompletionSync";
 
 function App() {
   const searchParams = useSearchParams()!;
+  
+  // Debug: Check if SKIP_GOOGLE_CONNECT_MCP is set
+  const skipGoogleConnectMcp = process.env.NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP === 'true';
+  if (typeof window !== 'undefined') {
+    console.log('[App] Environment check:', {
+      NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP: process.env.NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP,
+      skipGoogleConnectMcp,
+    });
+  }
 
   // ---------------------------------------------------------------------
   // Codec selector – lets you toggle between wide-band Opus (48 kHz)
@@ -163,6 +172,16 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // Use the variable from component scope
+    if (skipGoogleConnectMcp) {
+      console.log('[App] SKIP_GOOGLE_CONNECT_MCP=true: Skipping MCP wait, connecting to Realtime automatically');
+      // Auto-connect when agent is selected, without waiting for MCP
+      if (selectedAgentName && sessionStatus === 'DISCONNECTED') {
+        connectToRealtime();
+      }
+      return;
+    }
+
     const onMcpReady = () => {
       console.log('[App] Received mcp:ready event');
       // Verify MCP is actually connected before connecting to Realtime
@@ -180,7 +199,7 @@ function App() {
     return () => {
       window.removeEventListener('mcp:ready', onMcpReady);
     };
-  }, [selectedAgentName, sessionStatus]);
+  }, [selectedAgentName, sessionStatus, skipGoogleConnectMcp]);
 
   // useEffect(() => {
   //   if (selectedAgentName && sessionStatus === "DISCONNECTED") {
@@ -409,15 +428,23 @@ function App() {
       disconnectFromRealtime();
       setSessionStatus("DISCONNECTED");
     } else {
-      // Verify MCP server is connected before attempting Realtime connection
-      if (!mcpServerManager.isServerConnected()) {
-        console.warn('[App] Cannot connect to Realtime: MCP server is not connected');
-        alert('Please start the MCP container first from your user profile dropdown.');
-        return;
+      // Use the variable from component scope
+      console.log('[App] onToggleConnection - skipGoogleConnectMcp:', skipGoogleConnectMcp);
+      
+      // Skip MCP verification if SKIP_GOOGLE_CONNECT_MCP is enabled
+      if (!skipGoogleConnectMcp) {
+        // Verify MCP server is connected before attempting Realtime connection
+        if (!mcpServerManager.isServerConnected()) {
+          console.warn('[App] Cannot connect to Realtime: MCP server is not connected');
+          alert('Please start the MCP container first from your user profile dropdown.');
+          return;
+        }
+        console.log('[App] MCP server verified connected, initiating Realtime connection');
+      } else {
+        console.log('[App] SKIP_GOOGLE_CONNECT_MCP=true: Skipping MCP verification');
       }
 
       try {
-        console.log('[App] MCP server verified connected, initiating Realtime connection');
         connectToRealtime();
         // при успешном подключении connectToRealtime обычно сам установит sessionStatus,
         // но если вы хотите — можно здесь setSessionStatus("CONNECTING") до вызова и т.д.

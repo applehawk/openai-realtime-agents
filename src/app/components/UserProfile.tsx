@@ -28,6 +28,14 @@ export default function UserProfile() {
   const [isContainerLoading, setIsContainerLoading] = useState(false);
 
   useEffect(() => {
+    const skipGoogleConnectMcp = process.env.NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP === 'true';
+    
+    // Skip loading Google/container status if SKIP_GOOGLE_CONNECT_MCP is enabled
+    if (skipGoogleConnectMcp) {
+      console.log('[UserProfile] SKIP_GOOGLE_CONNECT_MCP=true: Skipping Google/container status loading');
+      return;
+    }
+    
     if (user?.google_connected) {
       loadGoogleStatus();
       loadContainerStatus();
