@@ -33,6 +33,7 @@ const TranscriptContext = createContext<TranscriptContextValue | undefined>(unde
 export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
   const [transcriptItems, setTranscriptItems] = useState<TranscriptItem[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const lastUpdateRef = React.useRef<Map<string, { message: string; progress: number; timestamp: number }>>(new Map());
 
   function newTimestampPretty(): string {
     const now = new Date();
@@ -161,17 +162,38 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
   };
 
   const updateTaskProgress: TranscriptContextValue["updateTaskProgress"] = (sessionId, progress, message, details) => {
-    console.log('[TranscriptContext] Updating task progress:', { sessionId, progress, message });
+    // Throttling: Skip if same update received within 100ms
+    const now = Date.now();
+    const lastUpdate = lastUpdateRef.current.get(sessionId);
 
-    setTranscriptItems((prev) =>
-      prev.map((item) => {
+    if (lastUpdate &&
+        lastUpdate.message === message &&
+        lastUpdate.progress === progress &&
+        now - lastUpdate.timestamp < 100) {
+      console.log('[TranscriptContext] THROTTLED - same update within 100ms');
+      return;
+    }
+
+    lastUpdateRef.current.set(sessionId, { message, progress, timestamp: now });
+
+    setTranscriptItems((prev) => {
+      const targetItem = prev.find(item => item.type === "TASK_PROGRESS" && item.sessionId === sessionId);
+
+      if (!targetItem) {
+        console.warn('[TranscriptContext] No TASK_PROGRESS item found for session:', sessionId);
+        return prev;
+      }
+
+      // Prevent updates to already completed tasks
+      if (targetItem.status === "DONE") {
+        console.log('[TranscriptContext] Skipping update - task already marked as DONE');
+        return prev;
+      }
+
+      console.log('[TranscriptContext] Updating task progress:', { sessionId, progress, message });
+
+      return prev.map((item) => {
         if (item.type === "TASK_PROGRESS" && item.sessionId === sessionId) {
-          // Prevent updates to already completed tasks
-          if (item.status === "DONE" && progress >= 100) {
-            console.log('[TranscriptContext] Skipping update - task already marked as DONE');
-            return item;
-          }
-
           const newUpdates = [...(item.progressUpdates || []), { progress, message, details, timestamp: Date.now() }];
           return {
             ...item,
@@ -182,8 +204,8 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
           };
         }
         return item;
-      })
-    );
+      });
+    });
   };
 
   return (

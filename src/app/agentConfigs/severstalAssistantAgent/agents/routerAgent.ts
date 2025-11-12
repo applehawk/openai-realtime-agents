@@ -48,19 +48,16 @@ function createRouterAgent(mcpUrl?: string): RealtimeAgent {
 
     // Backend agent для всех многошаговых задач
     delegateToIntelligentSupervisor, // ← Unified intelligent supervisor (Path 4)
-
-    // Task context для получения состояния выполняемых задач
-    getTaskContext, // ← Получить состояние задачи по sessionId
   ];
 
   // Add hostedMcpTool if MCP URL is provided
   const tools: Tool[] = mcpUrl
     ? [
         ...baseTools,
-        hostedMcpTool({
-          serverLabel: 'google',
-          serverUrl: mcpUrl,
-        }),
+        // hostedMcpTool({
+        //   serverLabel: 'google',
+        //   serverUrl: mcpUrl,
+        // }),
       ]
     : baseTools;
 
@@ -138,7 +135,7 @@ export async function initializeMCPServersBeforeAgent(accessToken?: string): Pro
 
     // Step 3: Recreate agent with hostedMcpTool
     console.log('[routerAgent] 🔧 Recreating router agent with hostedMcpTool...');
-    currentRouterAgent = createRouterAgent(mcpUrl);
+    currentRouterAgent = createRouterAgent(/*mcpUrl*/);
     routerAgent = currentRouterAgent; // Update exported reference
 
     console.log('[routerAgent] ✅ Router agent recreated with hostedMcpTool:', {

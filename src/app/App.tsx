@@ -31,6 +31,7 @@ import {
 
 import useAudioDownload from "./hooks/useAudioDownload";
 import { useHandleSessionHistory } from "./hooks/useHandleSessionHistory";
+import { useTaskCompletionSync } from "./hooks/useTaskCompletionSync";
 
 function App() {
   const searchParams = useSearchParams()!;
@@ -55,6 +56,7 @@ function App() {
     addTranscriptBreadcrumb,
     addTaskProgressMessage,
     updateTaskProgress,
+    activeSessionId,
   } = useTranscript();
   const { logClientEvent, logServerEvent } = useEvent();
 
@@ -88,6 +90,7 @@ function App() {
     disconnect,
     sendUserText,
     sendEvent,
+    addContextMessage,
     interrupt,
     mute,
   } = useRealtimeSession({
@@ -138,6 +141,16 @@ function App() {
   };
 
   useHandleSessionHistory();
+
+  // Sync task progress and completion to RealtimeSession context
+  // - Syncs step_completed events for intermediate progress
+  // - Syncs final completed event with full results
+  useTaskCompletionSync({
+    sessionId: activeSessionId,
+    addContextMessage,
+    enabled: sessionStatus === 'CONNECTED',
+    syncStepCompletions: true, // Sync intermediate step completions
+  });
 
   // Note: MCP server initialization moved to UserProfile.tsx
   // It will be initialized after container starts successfully
