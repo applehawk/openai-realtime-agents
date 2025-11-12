@@ -38,11 +38,37 @@ export function TaskProgressMessage({
   const [taskTree, setTaskTree] = useState<TaskNode | undefined>(hierarchicalBreakdown);
 
   // Update transcript context when progress changes
+  // Use ref to track if task is already complete to avoid unnecessary updates
+  const isTaskCompleteRef = React.useRef(false);
+  const lastUpdateRef = React.useRef<{ progress: number; message: string } | null>(null);
+
   useEffect(() => {
-    if (progress > 0 || message) {
-      updateTaskProgress(sessionId, progress, message || initialMessage);
+    // Skip if task already marked as complete
+    if (isTaskCompleteRef.current) {
+      console.log('[TaskProgressMessage] Skipping update - task already complete');
+      return;
     }
-  }, [progress, message, sessionId, updateTaskProgress, initialMessage]);
+
+    // Skip if this is the same update we just processed (prevent duplicate calls)
+    if (lastUpdateRef.current &&
+        lastUpdateRef.current.progress === progress &&
+        lastUpdateRef.current.message === message) {
+      return;
+    }
+
+    // Only update if we have actual progress data
+    if (progress > 0 || message) {
+      console.log('[TaskProgressMessage] Updating progress:', { sessionId, progress, message });
+      updateTaskProgress(sessionId, progress, message || initialMessage);
+      lastUpdateRef.current = { progress, message };
+    }
+
+    // Mark as complete when progress reaches 100 or error occurs
+    if (isComplete || error) {
+      console.log('[TaskProgressMessage] Marking task as complete');
+      isTaskCompleteRef.current = true;
+    }
+  }, [progress, message, sessionId, updateTaskProgress, initialMessage, isComplete, error]);
 
   // Extract task tree from progress updates
   useEffect(() => {

@@ -4,6 +4,7 @@ import React, {
   createContext,
   useContext,
   useState,
+  useCallback,
   FC,
   PropsWithChildren,
 } from "react";
@@ -33,6 +34,7 @@ const TranscriptContext = createContext<TranscriptContextValue | undefined>(unde
 export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
   const [transcriptItems, setTranscriptItems] = useState<TranscriptItem[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const lastUpdateRef = React.useRef<Map<string, { message: string; progress: number; timestamp: number }>>(new Map());
 
   function newTimestampPretty(): string {
     const now = new Date();
@@ -46,7 +48,7 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
     return `${time}.${ms}`;
   }
 
-  const addTranscriptMessage: TranscriptContextValue["addTranscriptMessage"] = (itemId, role, text = "", isHidden = false) => {
+  const addTranscriptMessage: TranscriptContextValue["addTranscriptMessage"] = useCallback((itemId, role, text = "", isHidden = false) => {
     setTranscriptItems((prev) => {
       if (prev.some((log) => log.itemId === itemId && log.type === "MESSAGE")) {
         console.warn(`[addTranscriptMessage] skipping; message already exists for itemId=${itemId}, role=${role}, text=${text}`);
@@ -67,9 +69,9 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
 
       return [...prev, newItem];
     });
-  };
+  }, []);
 
-  const updateTranscriptMessage: TranscriptContextValue["updateTranscriptMessage"] = (itemId, newText, append = false) => {
+  const updateTranscriptMessage: TranscriptContextValue["updateTranscriptMessage"] = useCallback((itemId, newText, append = false) => {
     setTranscriptItems((prev) => {
       const result = prev.map((item) => {
         if (item.itemId === itemId && item.type === "MESSAGE") {
@@ -96,9 +98,9 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
       });
       return result;
     });
-  };
+  }, []);
 
-  const addTranscriptBreadcrumb: TranscriptContextValue["addTranscriptBreadcrumb"] = (title, data) => {
+  const addTranscriptBreadcrumb: TranscriptContextValue["addTranscriptBreadcrumb"] = useCallback((title, data) => {
     setTranscriptItems((prev) => [
       ...prev,
       {
@@ -119,25 +121,25 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
       console.log('[TranscriptContext] Auto-detected sessionId:', data.sessionId);
       setActiveSessionId(data.sessionId);
     }
-  };
+  }, []);
 
-  const toggleTranscriptItemExpand: TranscriptContextValue["toggleTranscriptItemExpand"] = (itemId) => {
+  const toggleTranscriptItemExpand: TranscriptContextValue["toggleTranscriptItemExpand"] = useCallback((itemId) => {
     setTranscriptItems((prev) =>
       prev.map((log) =>
         log.itemId === itemId ? { ...log, expanded: !log.expanded } : log
       )
     );
-  };
+  }, []);
 
-  const updateTranscriptItem: TranscriptContextValue["updateTranscriptItem"] = (itemId, updatedProperties) => {
+  const updateTranscriptItem: TranscriptContextValue["updateTranscriptItem"] = useCallback((itemId, updatedProperties) => {
     setTranscriptItems((prev) =>
       prev.map((item) =>
         item.itemId === itemId ? { ...item, ...updatedProperties } : item
       )
     );
-  };
+  }, []);
 
-  const addTaskProgressMessage: TranscriptContextValue["addTaskProgressMessage"] = (sessionId, taskDescription) => {
+  const addTaskProgressMessage: TranscriptContextValue["addTaskProgressMessage"] = useCallback((sessionId, taskDescription) => {
     console.log('[TranscriptContext] Creating TASK_PROGRESS message for session:', sessionId);
 
     setTranscriptItems((prev) => [
@@ -158,13 +160,40 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
         isHidden: false,
       },
     ]);
-  };
+  }, []);
 
-  const updateTaskProgress: TranscriptContextValue["updateTaskProgress"] = (sessionId, progress, message, details) => {
-    console.log('[TranscriptContext] Updating task progress:', { sessionId, progress, message });
+  const updateTaskProgress: TranscriptContextValue["updateTaskProgress"] = useCallback((sessionId, progress, message, details) => {
+    // Throttling: Skip if same update received within 100ms
+    const now = Date.now();
+    const lastUpdate = lastUpdateRef.current.get(sessionId);
 
-    setTranscriptItems((prev) =>
-      prev.map((item) => {
+    if (lastUpdate &&
+        lastUpdate.message === message &&
+        lastUpdate.progress === progress &&
+        now - lastUpdate.timestamp < 100) {
+      console.log('[TranscriptContext] THROTTLED - same update within 100ms');
+      return;
+    }
+
+    lastUpdateRef.current.set(sessionId, { message, progress, timestamp: now });
+
+    setTranscriptItems((prev) => {
+      const targetItem = prev.find(item => item.type === "TASK_PROGRESS" && item.sessionId === sessionId);
+
+      if (!targetItem) {
+        console.warn('[TranscriptContext] No TASK_PROGRESS item found for session:', sessionId);
+        return prev;
+      }
+
+      // Prevent updates to already completed tasks
+      if (targetItem.status === "DONE") {
+        console.log('[TranscriptContext] Skipping update - task already marked as DONE');
+        return prev;
+      }
+
+      console.log('[TranscriptContext] Updating task progress:', { sessionId, progress, message });
+
+      return prev.map((item) => {
         if (item.type === "TASK_PROGRESS" && item.sessionId === sessionId) {
           const newUpdates = [...(item.progressUpdates || []), { progress, message, details, timestamp: Date.now() }];
           return {
@@ -176,9 +205,9 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
           };
         }
         return item;
-      })
-    );
-  };
+      });
+    });
+  }, []);
 
   return (
     <TranscriptContext.Provider

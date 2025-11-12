@@ -3,6 +3,7 @@ import {
   RealtimeSession,
   RealtimeAgent,
   OpenAIRealtimeWebRTC,
+  RealtimeMessageItem,
 } from '@openai/agents/realtime';
 
 import { audioFormatForCodec, applyCodecPreferences } from '../lib/codecUtils';
@@ -41,7 +42,7 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
       callbacks.onConnectionChange?.(s);
       logClientEvent({}, s);
     },
-    [callbacks],
+    [callbacks, logClientEvent],
   );
 
   const { logServerEvent } = useEvent();
@@ -145,12 +146,12 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
     [],
   );
 
-  const handleAgentHandoff = (item: any) => {
+  const handleAgentHandoff = useCallback((item: any) => {
     const history = item.context.history;
     const lastMessage = history[history.length - 1];
     const agentName = lastMessage.name.split("transfer_to_")[1];
     callbacks.onAgentHandoff?.(agentName);
-  };
+  }, [callbacks]);
 
   useEffect(() => {
     const session = sessionRef.current;
@@ -371,6 +372,95 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
     sessionRef.current?.transport.sendEvent(ev);
   }, []);
 
+  /**
+   * Add a context message to the RealtimeSession history
+   * This allows external events (like SSE task completions) to be injected into the session context
+   *
+   * Uses updateHistory() to append a new message item to the session history,
+   * making it available in the agent's context for future responses.
+   *
+   * Based on RealtimeMessageItem type from SDK:
+   * - System messages: { type: "message", role: "system", itemId: string, content: object[] }
+   * - User messages: { type: "message", role: "user", itemId: string, status: "completed", content: [{ type: "input_text", text: string }] }
+   * - Assistant messages: { type: "message", role: "assistant", itemId: string, status: "completed", content: [{ type: "output_text", text: string }] }
+   */
+  const addContextMessage = useCallback((role: 'user' | 'assistant' | 'system', content: string) => {
+    if (!sessionRef.current) {
+      console.warn('[useRealtimeSession] Cannot add context message - session not connected');
+      return;
+    }
+
+    try {
+      console.log('[useRealtimeSession] Adding context message to session:', { role, contentLength: content.length });
+
+      // Get current history using the history getter accessor
+      const currentHistory = sessionRef.current.history;
+
+      // Generate unique item ID
+      const itemId = `msg_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+      // Create a new message item with proper RealtimeMessageItem structure based on role
+      let newItem: RealtimeMessageItem;
+
+      if (role === 'system') {
+        // System message: RealtimeMessageItem with role "system"
+        // System messages don't have 'status' field
+        newItem = {
+          type: 'message',
+          role: 'system',
+          itemId,
+          content: [
+            {
+              type: 'input_text',
+              text: content,
+            },
+          ],
+        } as RealtimeMessageItem;
+      } else if (role === 'user') {
+        // User message: RealtimeMessageItem with role "user"
+        newItem = {
+          type: 'message',
+          role: 'user',
+          itemId,
+          status: 'completed',
+          content: [
+            {
+              type: 'input_text',
+              text: content,
+            },
+          ],
+        } as RealtimeMessageItem;
+      } else {
+        // Assistant message: RealtimeMessageItem with role "assistant"
+        newItem = {
+          type: 'message',
+          role: 'assistant',
+          itemId,
+          status: 'completed',
+          content: [
+            {
+              type: 'output_text',
+              text: content,
+            },
+          ],
+        } as RealtimeMessageItem;
+      }
+
+      console.log('[useRealtimeSession] Appending message to history:', {
+        currentHistoryLength: currentHistory.length,
+        newItemId: itemId,
+        role,
+      });
+
+      // Use updateHistory with new array (not callback)
+      sessionRef.current.updateHistory([...currentHistory, newItem]);
+
+      console.log('[useRealtimeSession] Context message added successfully to history');
+    } catch (error) {
+      console.error('[useRealtimeSession] Failed to add context message:', error);
+    }
+  }, []);
+
   const mute = useCallback((m: boolean) => {
     sessionRef.current?.mute(m);
   }, []);
@@ -392,6 +482,7 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
     disconnect,
     sendUserText,
     sendEvent,
+    addContextMessage,
     mute,
     pushToTalkStart,
     pushToTalkStop,

@@ -10,14 +10,20 @@
 
 /**
  * Task status throughout its lifecycle
+ *
+ * v2.0 - Enhanced with granular failure states
  */
 export type TaskStatus =
-  | 'planned'      // Task is planned but not started
-  | 'in_progress'  // Task is currently being executed
-  | 'completed'    // Task completed successfully
-  | 'failed'       // Task failed to complete
-  | 'blocked'      // Task is blocked by dependencies
-  | 'skipped';     // Task skipped based on context (adaptive execution)
+  | 'planned'           // Task is planned but not started
+  | 'in_progress'       // Task is currently being executed
+  | 'completed'         // Task completed successfully
+  | 'failed'            // Generic failure (deprecated - use specific statuses)
+  | 'needUserInput'     // Waiting for user to provide missing information
+  | 'needsResearch'     // Requires web research via perplexityResearch
+  | 'researchFailed'    // Web research attempted but failed
+  | 'toolError'         // MCP tool execution error
+  | 'blocked'           // Task is blocked by dependencies
+  | 'skipped';          // Task skipped based on context (adaptive execution)
 
 /**
  * Task complexity determines execution strategy
@@ -109,13 +115,21 @@ export interface TaskExecutionRequest {
 
 /**
  * Response after task execution
+ *
+ * v2.0 - Supports granular status codes
  */
 export interface TaskExecutionResponse {
-  status: 'completed' | 'failed';
+  status: 'completed' | 'failed' | 'needUserInput' | 'needsResearch' | 'researchFailed' | 'toolError';
   result?: string;                     // Result in Russian (past tense)
   error?: string;                      // Error message if failed
+  userQuestion?: string;               // Question to ask user (when status = needUserInput)
+  researchQuery?: string;              // Suggested research query (when status = needsResearch)
   workflowSteps?: string[];            // Steps taken during execution
   needsRefinement?: boolean;           // If result quality is insufficient
+  metadata?: {                         // Additional metadata
+    toolUsed?: string;                 // Which tool was used (mcp/perplexityResearch)
+    attemptedActions?: string[];       // Actions attempted before failure
+  };
 }
 
 /**

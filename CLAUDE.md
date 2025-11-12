@@ -2,34 +2,125 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## General Guidelines
+
+**Documentation Policy:**
+- Do NOT create a new markdown file to document each change or summarize your work unless specifically requested by the user.
+- Only create documentation when explicitly asked or when it's critical for understanding complex architectural changes.
+- Focus on making code changes rather than writing reports about them.
+
 ## Overview
 
 This is a Next.js TypeScript demonstration of advanced voice agent patterns using the OpenAI Realtime API and the OpenAI Agents SDK (`@openai/agents`). The project showcases two main agentic patterns: **Chat-Supervisor** (a realtime chat agent backed by a more intelligent supervisor for complex tasks) and **Sequential Handoff** (specialized agents that transfer users between them).
 
 ## Development Commands
 
+The project uses **Makefile** for all development operations. Run `make help` to see all available commands.
+
+### NPM Commands
 ```bash
 # Install dependencies
-npm i
+make install
 
-# Start development server
-npm run dev
+# Start development server (npm)
+make dev-npm
 # Then open http://localhost:3000
 
 # Build for production
-npm run build
+make build
 
-# Start production server
-npm start
+# Start production server (npm)
+make start
 
 # Lint code
-npm run lint
+make lint
+```
+
+### Docker Environments
+
+The project supports two independent Docker environments:
+- **Dev environment**: Port 3001, uses `docker-compose.dev.yml` and `.env.dev`
+- **Prod environment**: Port 3000, uses `docker-compose.yml` and `.env`
+
+```bash
+# Start dev environment (port 3001)
+make dev
+
+# Start prod environment (port 3000)
+make prod
+
+# Stop environments
+make stop-dev
+make stop-prod
+make stop-all
+
+# View logs
+make dev-logs
+make prod-logs
+
+# Rebuild environments
+make build-dev
+make build-prod
+
+# Restart environments
+make restart-dev
+make restart-prod
+
+# Open shell in container
+make shell-dev
+make shell-prod
+
+# Full update cycle (git pull + rebuild prod)
+make updown
+```
+
+### Nginx Commands
+
+Nginx reverse proxy for routing to dev/prod environments:
+
+```bash
+# Start nginx (ports 80 and 443)
+make nginx
+
+# Stop/restart nginx
+make nginx-stop
+make nginx-restart
+
+# Reload nginx config without restart
+make nginx-reload
+
+# View logs and test config
+make nginx-logs
+make nginx-test
+make nginx-shell
+```
+
+### MCP Google Test Container
+
+```bash
+# Start MCP Google test container (requires env vars)
+MCP_REFRESH_TOKEN=token GOOGLE_CLIENT_ID=id GOOGLE_CLIENT_SECRET=secret make mcp-test
+
+# View logs, stop, or restart
+make mcp-logs
+make mcp-stop
+make mcp-restart
 ```
 
 ## Environment Setup
 
+### For NPM development:
 - Copy `.env.sample` to `.env` and add your `OPENAI_API_KEY`
 - Alternatively, add `OPENAI_API_KEY` to your `.bash_profile` or equivalent
+
+### For Docker environments:
+- **Prod**: Configure `.env` file with `OPENAI_API_KEY`
+- **Dev**: Configure `.env.dev` file with `OPENAI_API_KEY`
+
+### Testing API Key:
+```bash
+make test-api-key
+```
 
 ## Architecture
 
@@ -85,10 +176,6 @@ The chat agent explicitly defers to the supervisor via `getNextResponseFromSuper
 ### Sequential Handoff Pattern
 
 Agents can transfer users between each other using tool-based handoffs. The agent graph is defined by `handoffs` arrays in each agent config. When an agent calls a transfer tool, a `session.update` event changes instructions and available tools for the new agent.
-
-### Guardrails
-
-Output guardrails (`src/app/agentConfigs/guardrails.ts`) use OpenAI's Moderation API to check assistant messages before delivery. Guardrail events (`guardrail_tripped`) are handled in `App.tsx` and displayed in the UI.
 
 ## Key Files to Understand
 

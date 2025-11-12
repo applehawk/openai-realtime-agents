@@ -1,11 +1,10 @@
 /**
  * MCP Server Manager
  *
- * Dynamically manages MCP server connection based on container status.
- * The MCP server is created and connected only when container info is available.
+ * Manages MCP tools by fetching them from server-side API endpoint.
+ * Uses hostedMcpTool approach instead of direct MCPServerStreamableHttp
+ * to avoid "No existing trace found" error in browser environment.
  */
-
-import { MCPServerStreamableHttp } from '@openai/agents';
 
 interface ContainerStatus {
   status: string;
@@ -16,104 +15,142 @@ interface ContainerStatus {
   container_name?: string;
 }
 
+interface MCPTool {
+  name: string;
+  description?: string;
+  inputSchema?: any;
+}
+
+interface MCPToolsResponse {
+  success: boolean;
+  url?: string;
+  containerName?: string;
+  toolCount?: number;
+  tools?: MCPTool[];
+  error?: string;
+}
+
 class MCPServerManager {
-  private mcpServer: MCPServerStreamableHttp | null = null;
+  private mcpTools: MCPTool[] = [];
+  private mcpUrl: string | null = null;
   private isConnected = false;
   private containerStatus: ContainerStatus | null = null;
 
   /**
-   * Initialize MCP server with container status
+   * Initialize MCP server by fetching tools list from server-side API
    * @param containerStatus - Container information from /api/containers/status
    */
-  async initialize(containerStatus: ContainerStatus): Promise<MCPServerStreamableHttp | null> {
+  async initialize(containerStatus: ContainerStatus): Promise<MCPTool[]> {
     if (!containerStatus.running || !containerStatus.port) {
       console.warn('[MCPServerManager] Container is not running or port is not available');
-      return null;
+      return [];
     }
 
     this.containerStatus = containerStatus;
 
-    // Create MCP server instance if not exists
-    if (!this.mcpServer) {
-      // CRITICAL: OpenAI Realtime API needs PUBLIC HTTPS URL to access MCP server
-      // Use nginx proxy path instead of direct port access
-      const publicDomain = typeof window !== 'undefined' ? window.location.hostname : 'rndaibot.ru';
-      const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'https' : 'https';
+    // Build public MCP URL for hostedMcpTool
+    const publicDomain = typeof window !== 'undefined' ? window.location.hostname : 'rndaibot.ru';
+    const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'https' : 'http';
+    const containerName = containerStatus.container_name || 'mcpgoogle';
+    const username = containerName.replace('mcpgoogle-', '');
+    this.mcpUrl = `${protocol}://${publicDomain}/mcp/${username}`;
 
-      const containerName = containerStatus.container_name || 'mcpgoogle';
+    console.log(`[MCPServerManager] MCP URL for hostedMcpTool: ${this.mcpUrl}`);
+    console.log(`[MCPServerManager] Container: ${containerName}, Username: ${username}`);
 
-      // Extract username from container name: mcpgoogle-{username} -> {username}
-      const username = containerName.replace('mcpgoogle-', '');
-
-      // Use nginx proxy URL pattern: https://rndaibot.ru/mcp/{username}/
-      const publicUrl = `${protocol}://${publicDomain}/mcp/${username}/mcp`;
-
-      console.log(`[MCPServerManager] Creating MCP server with NGINX PROXY URL: ${publicUrl}`);
-      console.log(`[MCPServerManager] Container: ${containerName}, Username: ${username}`);
-      console.log(`[MCPServerManager] Traffic flow: OpenAI → nginx (SSL) → ${containerName}:8000`);
-
-      this.mcpServer = new MCPServerStreamableHttp({
-        url: publicUrl,
-        name: containerName,
-        cacheToolsList: true, // Enable caching for better performance
-      });
-    }
-
-    // Try to connect to MCP server
-    // Note: In some versions, connect() might not be implemented for Streaming HTTP
+    // Step 1: Verify MCP server is healthy
     try {
-      console.log('[MCPServerManager] Attempting to connect to MCP server...');
-      // Check if connect method exists and is a function
-      if (this.mcpServer.connect && typeof this.mcpServer.connect === 'function') {
-        await this.mcpServer.connect();
-        console.log('[MCPServerManager] Successfully connected to MCP server');
-      } else {
-        console.log('[MCPServerManager] connect() not available, using direct mode');
+      console.log('[MCPServerManager] Verifying MCP server health...');
+      const healthUrl = `${protocol}://${publicDomain}/mcp/${username}/health`;
+
+      const healthResponse = await fetch(healthUrl, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (!healthResponse.ok) {
+        throw new Error(`MCP server health check failed: ${healthResponse.status} ${healthResponse.statusText}`);
       }
-      this.isConnected = true;
-    } catch (error) {
-      // If connect() throws "not implemented", just mark as connected
-      // The server will work in direct HTTP mode
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      if (errorMsg.includes('not implemented') || errorMsg.includes('Not implemented')) {
-        console.log('[MCPServerManager] connect() not implemented, using direct HTTP mode');
-        this.isConnected = true;
-      } else {
-        console.error('[MCPServerManager] Failed to connect to MCP server:', error);
-        this.mcpServer = null;
-        this.isConnected = false;
-        return null;
-      }
+
+      const healthData = await healthResponse.json();
+      console.log('[MCPServerManager] ✅ MCP server is healthy:', healthData);
+    } catch (healthError) {
+      console.error('[MCPServerManager] ❌ MCP server health check failed:', {
+        error: healthError,
+        message: healthError instanceof Error ? healthError.message : String(healthError),
+      });
+      this.isConnected = false;
+      return [];
     }
 
-    return this.mcpServer;
+    // Step 2: Fetch tools list from server-side API
+    try {
+      console.log('[MCPServerManager] Fetching MCP tools from server-side API...');
+
+      const toolsResponse = await fetch(`/api/mcp/tools?container=${encodeURIComponent(containerName)}`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (!toolsResponse.ok) {
+        const errorData = await toolsResponse.json();
+        throw new Error(`Failed to fetch MCP tools: ${errorData.error || toolsResponse.statusText}`);
+      }
+
+      const toolsData: MCPToolsResponse = await toolsResponse.json();
+
+      if (!toolsData.success || !toolsData.tools) {
+        throw new Error(`MCP tools fetch unsuccessful: ${toolsData.error || 'Unknown error'}`);
+      }
+
+      this.mcpTools = toolsData.tools;
+      this.isConnected = true;
+
+      console.log(`[MCPServerManager] ✅ Successfully fetched ${this.mcpTools.length} MCP tools`);
+      console.log('[MCPServerManager] Tools:', this.mcpTools.map(t => t.name));
+
+      return this.mcpTools;
+    } catch (toolsError) {
+      console.error('[MCPServerManager] ❌ Failed to fetch MCP tools:', {
+        error: toolsError,
+        message: toolsError instanceof Error ? toolsError.message : String(toolsError),
+      });
+      this.isConnected = false;
+      return [];
+    }
   }
 
   /**
-   * Get current MCP server instance
+   * Get list of MCP tools
    */
-  getServer(): MCPServerStreamableHttp | null {
-    return this.mcpServer;
+  getTools(): MCPTool[] {
+    return this.mcpTools;
   }
 
   /**
-   * Check if MCP server is connected
+   * Get MCP URL for hostedMcpTool
+   */
+  getMcpUrl(): string | null {
+    return this.mcpUrl;
+  }
+
+  /**
+   * Check if MCP tools are available
    */
   isServerConnected(): boolean {
-    return this.isConnected && this.mcpServer !== null;
+    return this.isConnected && this.mcpTools.length > 0;
   }
 
   /**
-   * Disconnect and cleanup MCP server
+   * Disconnect and cleanup
    */
   async cleanup(): Promise<void> {
-    // Streaming HTTP MCP doesn't need explicit close() call
-    // Just clear the references
-    console.log('[MCPServerManager] Cleaning up MCP server...');
+    console.log('[MCPServerManager] Cleaning up MCP tools...');
     this.isConnected = false;
-    this.mcpServer = null;
+    this.mcpTools = [];
+    this.mcpUrl = null;
     this.containerStatus = null;
-    console.log('[MCPServerManager] MCP server cleaned up');
+    console.log('[MCPServerManager] MCP tools cleaned up');
   }
 
   /**
@@ -124,10 +161,10 @@ class MCPServerManager {
   }
 
   /**
-   * Fetch container status from API and initialize MCP server
-   * @param accessToken - User access token for authentication
+   * Fetch container status from API and initialize
+   * @param accessToken - User access token for authentication (optional, uses cookies by default)
    */
-  async fetchAndInitialize(accessToken?: string): Promise<MCPServerStreamableHttp | null> {
+  async fetchAndInitialize(accessToken?: string): Promise<MCPTool[]> {
     try {
       console.log('[MCPServerManager] Fetching container status...');
       const headers: HeadersInit = {};
@@ -146,7 +183,7 @@ class MCPServerManager {
           statusText: response.statusText,
           url: response.url,
         });
-        return null;
+        return [];
       }
 
       const containerStatus: ContainerStatus = await response.json();
@@ -165,7 +202,7 @@ class MCPServerManager {
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });
-      return null;
+      return [];
     }
   }
 }
@@ -174,4 +211,4 @@ class MCPServerManager {
 export const mcpServerManager = new MCPServerManager();
 
 // Export types
-export type { ContainerStatus };
+export type { ContainerStatus, MCPTool };

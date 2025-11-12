@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 
@@ -23,22 +23,21 @@ import { useRealtimeSession } from "./hooks/useRealtimeSession";
 
 // Agent configs
 // import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
-import { chatSeverstalAssistantScenario, mcpServerManager } from "@/app/agentConfigs/severstalAssistantAgent";
+import {
+  chatSeverstalAssistantScenario,
+  mcpServerManager,
+  getCurrentRouterAgent,
+} from "@/app/agentConfigs/severstalAssistantAgent";
 
 import useAudioDownload from "./hooks/useAudioDownload";
 import { useHandleSessionHistory } from "./hooks/useHandleSessionHistory";
+import { useTaskCompletionSync } from "./hooks/useTaskCompletionSync";
 
 function App() {
   const searchParams = useSearchParams()!;
   
   // Debug: Check if SKIP_GOOGLE_CONNECT_MCP is set
   const skipGoogleConnectMcp = process.env.NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP === 'true';
-  if (typeof window !== 'undefined') {
-    console.log('[App] Environment check:', {
-      NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP: process.env.NEXT_PUBLIC_SKIP_GOOGLE_CONNECT_MCP,
-      skipGoogleConnectMcp,
-    });
-  }
 
   // ---------------------------------------------------------------------
   // Codec selector – lets you toggle between wide-band Opus (48 kHz)
@@ -60,6 +59,7 @@ function App() {
     addTranscriptBreadcrumb,
     addTaskProgressMessage,
     updateTaskProgress,
+    activeSessionId,
   } = useTranscript();
   const { logClientEvent, logServerEvent } = useEvent();
 
@@ -88,19 +88,27 @@ function App() {
     }
   }, [sdkAudioElement]);
 
+  // Memoize callbacks to prevent unnecessary re-renders
+  const handleConnectionChange = useCallback((s: SessionStatus) => {
+    setSessionStatus(s);
+  }, []);
+
+  const handleAgentHandoff = useCallback((agentName: string) => {
+    handoffTriggeredRef.current = true;
+    setSelectedAgentName(agentName);
+  }, []);
+
   const {
     connect,
     disconnect,
     sendUserText,
     sendEvent,
+    addContextMessage,
     interrupt,
     mute,
   } = useRealtimeSession({
-    onConnectionChange: (s) => setSessionStatus(s as SessionStatus),
-    onAgentHandoff: (agentName: string) => {
-      handoffTriggeredRef.current = true;
-      setSelectedAgentName(agentName);
-    },
+    onConnectionChange: handleConnectionChange,
+    onAgentHandoff: handleAgentHandoff,
   });
 
   const [sessionStatus, setSessionStatus] =
@@ -144,6 +152,17 @@ function App() {
 
   useHandleSessionHistory();
 
+  // Sync task progress and completion to RealtimeSession context
+  // - Syncs step_completed events for intermediate progress
+  // - Syncs final completed event with full results
+  useTaskCompletionSync({
+    sessionId: activeSessionId,
+    addContextMessage,
+    sendUserText, // Send notifications to agent so it can react
+    enabled: sessionStatus === 'CONNECTED',
+    syncStepCompletions: true, // Sync intermediate step completions
+  });
+
   // Note: MCP server initialization moved to UserProfile.tsx
   // It will be initialized after container starts successfully
 
@@ -182,7 +201,7 @@ function App() {
     return () => {
       window.removeEventListener('mcp:ready', onMcpReady);
     };
-  }, [selectedAgentName, sessionStatus, skipGoogleConnectMcp]);
+  }, [selectedAgentName]);
 
   // useEffect(() => {
   //   if (selectedAgentName && sessionStatus === "DISCONNECTED") {
@@ -281,9 +300,16 @@ function App() {
         console.error('[App] ❌ Error fetching user info:', userError);
       }
 
+      // Get the current router agent (may have MCP servers after initialization)
+      const currentRouterAgent = getCurrentRouterAgent();
+      console.log('[App] 📡 Using router agent for session:', {
+        name: currentRouterAgent.name,
+        mcpServersCount: currentRouterAgent.mcpServers?.length || 0,
+      });
+
       await connect({
         getEphemeralKey: async () => EPHEMERAL_KEY,
-        initialAgents: chatSeverstalAssistantScenario,
+        initialAgents: [currentRouterAgent], // Use current agent with MCP servers
         audioElement: sdkAudioElement,
         outputGuardrails: [],
         extraContext: {
@@ -291,11 +317,11 @@ function App() {
           addTaskProgressMessage,
           updateTaskProgress,
           // Allow agents to access task context from IntelligentSupervisor
-          getTaskContext: async (sessionId: string) => {
-            // Import dynamically to avoid circular dependencies
-            const { taskContextStore } = await import('./api/supervisor/unified/taskContextStore');
-            return taskContextStore.getContext(sessionId);
-          },
+          // getTaskContext: async (sessionId: string) => {
+          //   // Import dynamically to avoid circular dependencies
+          //   const { taskContextStore } = await import('./api/supervisor/unified/taskContextStore');
+          //   return taskContextStore.getContext(sessionId);
+          // },
           // Include user info in context so tools can access it without async fetch
           currentUser: currentUser ? {
             userId: currentUser.id,

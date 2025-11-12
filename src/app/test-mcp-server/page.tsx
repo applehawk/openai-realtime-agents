@@ -135,21 +135,92 @@ export default function TestMCPServer() {
   const handleInitializeMCP = async () => {
     setLoading(prev => ({ ...prev, init: true }));
     try {
-      const response = await fetch('/api/mcp/initialize', {
-        method: 'POST',
+      // Use the same logic as UserProfile.tsx → initializeMCPServersBeforeAgent
+      addTestResult('Initialize MCP', true, 'Starting MCP initialization...', { step: 'fetching container' });
+
+      // Step 1: Fetch container status
+      const containerResponse = await fetch('/api/containers/status', {
         credentials: 'include',
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        addTestResult('Initialize MCP', true, 'MCP server initialized successfully', data);
-        await checkMCPConnection();
-      } else {
-        const error = await response.json();
-        addTestResult('Initialize MCP', false, `Failed: ${error.error || 'Unknown error'}`, error);
+      if (!containerResponse.ok) {
+        throw new Error(`Container status failed: ${containerResponse.status}`);
       }
+
+      const containerData = await containerResponse.json();
+      addTestResult('Container Status', true, `Container: ${containerData.container_name}`, containerData);
+
+      if (!containerData.running || containerData.health !== 'healthy') {
+        throw new Error(`Container not ready: ${containerData.status} (${containerData.health})`);
+      }
+
+      // Step 2: Initialize MCP via mcpServerManager logic
+      // (Simulated - actual initialization happens in routerAgent)
+      const username = containerData.container_name.replace('mcpgoogle-', '');
+      const mcpUrl = `https://rndaibot.ru/mcp/${username}/mcp`;
+
+      addTestResult('MCP URL Generated', true, `URL: ${mcpUrl}`, {
+        url: mcpUrl,
+        username,
+        containerName: containerData.container_name,
+        proxyFlow: `OpenAI → nginx → ${containerData.container_name}:8000`,
+      });
+
+      // Step 3: Test MCP connection (SSE initialize)
+      addTestResult('MCP Connection', true, 'Testing MCP SSE connection...', { url: mcpUrl });
+
+      const sseResponse = await fetch(mcpUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // MCP server requires BOTH accept types
+          'Accept': 'application/json, text/event-stream',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-11-05',
+            capabilities: { roots: { listChanged: true }, sampling: {} },
+            clientInfo: { name: 'test-mcp-server', version: '1.0.0' },
+          },
+        }),
+      });
+
+      if (!sseResponse.ok) {
+        throw new Error(`MCP connection failed: ${sseResponse.status}`);
+      }
+
+      addTestResult('MCP SSE Connection', true, `Connected to MCP server (${sseResponse.status})`, {
+        status: sseResponse.status,
+        headers: Object.fromEntries(sseResponse.headers),
+      });
+
+      // Step 4: Fetch MCP tools via backend API
+      const toolsResponse = await fetch('/api/mcp/tools', {
+        credentials: 'include',
+      });
+
+      if (toolsResponse.ok) {
+        const toolsData = await toolsResponse.json();
+        addTestResult('MCP Tools Retrieved', true, `Found ${toolsData.toolCount} tools`, toolsData);
+      } else {
+        addTestResult('MCP Tools Warning', false, 'Could not fetch tools via backend API');
+      }
+
+      addTestResult('Initialize MCP', true, '✅ MCP server fully initialized and ready!', {
+        mcpUrl,
+        containerName: containerData.container_name,
+        status: 'ready',
+      });
+
+      setMcpConnected(true);
+      await checkMCPConnection();
     } catch (error: any) {
       addTestResult('Initialize MCP', false, `Error: ${error.message}`);
+      setMcpConnected(false);
     } finally {
       setLoading(prev => ({ ...prev, init: false }));
     }

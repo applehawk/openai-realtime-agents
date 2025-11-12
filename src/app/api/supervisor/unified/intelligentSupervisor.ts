@@ -123,6 +123,7 @@ export interface UnifiedResponse {
 export class IntelligentSupervisor {
   private config: Required<IntelligentSupervisorConfig>;
   private sessionId: string;
+  private isCompleted: boolean = false; // Flag to prevent emitting after completion
 
   constructor(config?: IntelligentSupervisorConfig) {
     this.config = {
@@ -144,6 +145,12 @@ export class IntelligentSupervisor {
     progress: number,
     details?: any
   ): void {
+    // Don't emit if already completed
+    if (this.isCompleted) {
+      console.log(`[IntelligentSupervisor] Skipping emit - session ${this.sessionId} already completed`);
+      return;
+    }
+
     if (this.config.enableProgressCallbacks && this.sessionId) {
       progressEmitter.emitProgress({
         sessionId: this.sessionId,
@@ -153,6 +160,12 @@ export class IntelligentSupervisor {
         details,
         timestamp: Date.now(),
       });
+
+      // Mark as completed if this is a final event
+      if (type === 'completed' || type === 'error') {
+        this.isCompleted = true;
+        console.log(`[IntelligentSupervisor] Session ${this.sessionId} marked as completed (type: ${type})`);
+      }
 
       // Update task context store if details contain hierarchicalBreakdown
       if (details?.hierarchicalBreakdown) {
@@ -270,12 +283,27 @@ export class IntelligentSupervisor {
       executionTime,
     });
 
-    // Emit: Task completed
+    // Emit: Task completed with FULL RESULT
     this.emitProgress('completed', 'Задача выполнена успешно', 100, {
       strategy: result.strategy,
       complexity: result.complexity,
       executionTime,
       workflowStepsCount: result.workflowSteps?.length || 0,
+      // IMPORTANT: hierarchicalBreakdown at top level for taskContextStore
+      hierarchicalBreakdown: result.hierarchicalBreakdown,
+      // Include full result for client
+      finalResult: {
+        strategy: result.strategy,
+        complexity: result.complexity,
+        nextResponse: result.nextResponse,
+        workflowSteps: result.workflowSteps,
+        hierarchicalBreakdown: result.hierarchicalBreakdown,
+        progress: result.progress,
+        executionTime: result.executionTime,
+        plannedSteps: result.plannedSteps,
+        delegateBack: result.delegateBack,
+        delegationGuidance: result.delegationGuidance,
+      },
     });
 
     return result;
@@ -569,26 +597,27 @@ Execute this multi-step workflow using MCP tools. Provide comprehensive results 
         
         // Send tree update for all important events
         if (update.rootTask && (
-          update.type === 'breakdown_completed' || 
-          update.type === 'task_started' || 
-          update.type === 'task_completed' || 
+          update.type === 'breakdown_completed' ||
+          update.type === 'task_started' ||
+          update.type === 'task_completed' ||
           update.type === 'task_failed'
         )) {
           const hierarchicalBreakdown = this.buildHierarchicalBreakdown(update.rootTask);
           console.log(`[IntelligentSupervisor] Sending tree update after ${update.type}:`, update.taskId);
-          
+
           // Map event types to user-friendly messages
+          // Include taskId to make messages unique (prevents deduplication of different tasks)
           const messages = {
-            'breakdown_completed': `Декомпозиция завершена: ${update.taskDescription}`,
-            'task_started': `Начато выполнение: ${update.taskDescription}`,
-            'task_completed': `Завершено: ${update.taskDescription}`,
-            'task_failed': `Ошибка: ${update.taskDescription}`,
+            'breakdown_completed': `Декомпозиция завершена: ${update.taskDescription} [${update.taskId}]`,
+            'task_started': `Начато выполнение: ${update.taskDescription} [${update.taskId}]`,
+            'task_completed': `Завершено: ${update.taskDescription} [${update.taskId}]`,
+            'task_failed': `Ошибка: ${update.taskDescription} [${update.taskId}]`,
           };
-          
+
           this.emitProgress(
-            'step_started', 
-            messages[update.type] || update.taskDescription, 
-            progress, 
+            'step_started',
+            messages[update.type] || update.taskDescription,
+            progress,
             {
               orchestratorUpdate: update,
               hierarchicalBreakdown,
@@ -598,7 +627,8 @@ Execute this multi-step workflow using MCP tools. Provide comprehensive results 
           );
         } else {
           // Other progress updates (breakdown_started)
-          this.emitProgress('step_started', `${update.type}: ${update.taskDescription}`, progress, {
+          // Include taskId to make messages unique
+          this.emitProgress('step_started', `${update.type}: ${update.taskDescription} [${update.taskId || 'root'}]`, progress, {
             orchestratorUpdate: update,
           });
         }

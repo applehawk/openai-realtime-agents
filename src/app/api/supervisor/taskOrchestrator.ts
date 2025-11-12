@@ -309,13 +309,13 @@ export class TaskOrchestrator {
           }
         }
       } else {
-        // Task failed
-        task.status = 'failed';
+        // Task not completed - preserve specific status (researchFailed, needUserInput, toolError, etc.)
+        task.status = response.status;
         task.error = response.error || 'Unknown error';
         task.executionEndTime = new Date();
         taskTree.failedTasks++;
 
-        console.error(`[TaskOrchestrator] Task ${task.id} failed:`, response.error);
+        console.error(`[TaskOrchestrator] Task ${task.id} failed with status '${response.status}':`, response.error);
 
         // Notify progress with tree update
         this.notifyProgress({
@@ -542,13 +542,13 @@ export class TaskOrchestrator {
         // Update parent's subtask results
         this.updateParentSubtaskResults(task, taskTree);
       } else {
-        // Task failed
-        task.status = 'failed';
+        // Task not completed - preserve specific status (researchFailed, needUserInput, toolError, etc.)
+        task.status = response.status;
         task.error = response.error || 'Unknown error';
         task.executionEndTime = new Date();
         taskTree.failedTasks++;
 
-        console.error(`[TaskOrchestrator] Task ${task.id} failed:`, response.error);
+        console.error(`[TaskOrchestrator] Task ${task.id} failed with status '${response.status}':`, response.error);
 
         // Notify progress with tree update
         this.notifyProgress({
@@ -669,14 +669,19 @@ export class TaskOrchestrator {
  */
 export function formatTaskTreeForDisplay(task: Task, indent: number = 0): string {
   const prefix = '  '.repeat(indent);
-  const statusIcon = {
+  const statusIconMap: Record<TaskStatus, string> = {
     planned: '⏱',
     in_progress: '⏳',
     completed: '✓',
     failed: '✗',
+    needUserInput: '❓',      // v2.0 - waiting for user input
+    needsResearch: '🔍',      // v2.0 - requires web research
+    researchFailed: '🔎',     // v2.0 - research failed
+    toolError: '⚠️',          // v2.0 - MCP tool error
     blocked: '🔒',
     skipped: '⏭',
-  }[task.status];
+  };
+  const statusIcon = statusIconMap[task.status];
 
   let output = `${prefix}${statusIcon} ${task.description}\n`;
 

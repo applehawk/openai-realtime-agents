@@ -17,7 +17,17 @@ export type TaskComplexity = 'simple' | 'medium' | 'complex' | 'moderate';
 export type ExecutionStrategy = 'direct' | 'flat' | 'hierarchical';
 export type ExecutionMode = 'auto' | 'plan' | 'execute';
 export type SupervisorDecision = 'approve' | 'modify' | 'reject' | 'delegateBack';
-export type TaskStatus = 'planned' | 'in_progress' | 'completed' | 'failed' | 'blocked' | 'skipped';
+export type TaskStatus =
+  | 'planned'
+  | 'in_progress'
+  | 'completed'
+  | 'failed'
+  | 'needUserInput'     // v2.0 - waiting for user input
+  | 'needsResearch'     // v2.0 - requires web research
+  | 'researchFailed'    // v2.0 - research attempted but failed
+  | 'toolError'         // v2.0 - MCP tool execution error
+  | 'blocked'
+  | 'skipped';
 
 export interface TaskNode {
   taskId: string;
@@ -69,6 +79,10 @@ const statusIcons: Record<TaskStatus, { icon: string; color: string }> = {
   in_progress: { icon: '🔄', color: 'text-blue-500' },
   completed: { icon: '✅', color: 'text-green-500' },
   failed: { icon: '❌', color: 'text-red-500' },
+  needUserInput: { icon: '❓', color: 'text-yellow-600' },      // v2.0 - waiting for user
+  needsResearch: { icon: '🔍', color: 'text-cyan-600' },        // v2.0 - needs web research
+  researchFailed: { icon: '🔎', color: 'text-red-400' },        // v2.0 - research failed
+  toolError: { icon: '⚠️', color: 'text-orange-600' },          // v2.0 - tool error
   blocked: { icon: '🚫', color: 'text-orange-500' },
   skipped: { icon: '⏭️', color: 'text-purple-500' },
 };
@@ -122,6 +136,11 @@ function TaskNodeView({
           ${node.status === 'in_progress' ? 'bg-blue-50 border border-blue-200' : ''}
           ${node.status === 'completed' ? 'bg-green-50' : ''}
           ${node.status === 'failed' ? 'bg-red-50 border border-red-200' : ''}
+          ${node.status === 'needUserInput' ? 'bg-yellow-50 border border-yellow-300' : ''}
+          ${node.status === 'needsResearch' ? 'bg-cyan-50 border border-cyan-200' : ''}
+          ${node.status === 'researchFailed' ? 'bg-red-50 border border-red-300' : ''}
+          ${node.status === 'toolError' ? 'bg-orange-50 border border-orange-300' : ''}
+          ${node.status === 'blocked' ? 'bg-orange-50 border border-orange-200' : ''}
           ${node.status === 'skipped' ? 'bg-purple-50 border border-purple-200' : ''}
         `}
         onClick={() => hasSubtasks && setIsExpanded(!isExpanded)}
@@ -254,7 +273,10 @@ export function TaskTreeView({ taskTree }: TaskTreeViewProps) {
             <span title="Стратегия">➡️ прямое | 📋 плоское | 🌳 иерархия</span>
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <span title="Статус">⏳ план | 🔄 выполн. | ✅ готово | ❌ ошибка | ⏭️ пропущено</span>
+            <span title="Статус базовые">⏳ план | 🔄 выполн. | ✅ готово | ❌ ошибка | ⏭️ пропущено</span>
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <span title="Статус v2.0">❓ ждёт юзера | 🔍 нужен поиск | 🔎 поиск неудачен | ⚠️ ошибка инструм.</span>
           </div>
         </div>
       </div>

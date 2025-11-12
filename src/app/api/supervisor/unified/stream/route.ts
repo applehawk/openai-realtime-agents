@@ -1,13 +1,9 @@
 /**
- * SSE (Server-Sent Events) endpoint for real-time progress tracking
- *
+ * SSE endpoint for progress streaming — Next.js route
  * GET /api/supervisor/unified/stream?sessionId=xxx
  *
- * This endpoint establishes a persistent connection to stream progress updates
- * from IntelligentSupervisor tasks to the frontend in real-time.
- *
- * Version: 1.0
- * Date: 2025-10-23
+ * Version: 1.1
+ * Date: 2025-11-12
  */
 
 import { NextRequest } from 'next/server';
@@ -20,91 +16,114 @@ export async function GET(req: NextRequest) {
   const sessionId = req.nextUrl.searchParams.get('sessionId');
 
   if (!sessionId) {
-    return new Response(
-      JSON.stringify({ error: 'Missing sessionId parameter' }),
-      {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
+    return new Response(JSON.stringify({ error: 'Missing sessionId parameter' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   console.log(`[SSE Stream] Client connected for session: ${sessionId}`);
 
-  // Create a TransformStream for SSE
   const encoder = new TextEncoder();
   let isClosed = false;
+  let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+
+  // --- Progress handler reference (declared early for cleanup) ---
+  const progressHandler = (update: ProgressUpdate) => {
+    if (isClosed || !controller) return;
+
+    try {
+      // Send update with sequence ID in the data payload only
+      // Do NOT use SSE 'id:' field - it's for browser reconnection logic
+      const dataLine = `data: ${JSON.stringify(update)}\n\n`;
+      controller.enqueue(encoder.encode(dataLine));
+
+      console.log(`[SSE Stream] Sent update [${update.id}] type=${update.type} progress=${update.progress}%`);
+
+      // If update finishes the task, schedule cleanup shortly after sending
+      if (update.type === 'completed' || update.type === 'error') {
+        setTimeout(() => cleanup('task_finished'), 1000);
+      }
+    } catch (error) {
+      console.error('[SSE Stream] Error sending update:', error);
+      cleanup('handler_error');
+    }
+  };
+
+  // --- Cleanup wrapper ---
+  const cleanup = (() => {
+    let called = false;
+    return (reason: string) => {
+      if (called) return;
+      called = true;
+      isClosed = true;
+
+      try {
+        progressEmitter.offProgress(sessionId, progressHandler);
+      } catch (e) {
+        // ignore
+      }
+
+      // Do not force-remove session from completedSessions here; we want to keep completedSessions
+      try {
+        controller?.close();
+      } catch {}
+
+      console.log(`[SSE Stream] Cleaned up session ${sessionId} (${reason})`);
+    };
+  })();
 
   const stream = new ReadableStream({
-    start(controller) {
-      // Send initial connection message
-      const initialMessage = `data: ${JSON.stringify({
-        type: 'connected',
-        message: 'Connected to progress stream',
-        sessionId,
-        timestamp: Date.now(),
-      })}\n\n`;
-      controller.enqueue(encoder.encode(initialMessage));
+    start(ctrl) {
+      controller = ctrl;
 
-      // Progress update handler
-      const progressHandler = (update: ProgressUpdate) => {
-        if (isClosed) return;
-
-        try {
-          const message = `data: ${JSON.stringify(update)}\n\n`;
-          controller.enqueue(encoder.encode(message));
-
-          // If task completed or errored, close the stream after a delay
-          if (update.type === 'completed' || update.type === 'error') {
-            setTimeout(() => {
-              if (!isClosed) {
-                controller.close();
-                isClosed = true;
-                progressEmitter.cleanupSession(sessionId);
-                console.log(`[SSE Stream] Stream closed for session: ${sessionId}`);
-              }
-            }, 1000); // 1 second delay to ensure client receives final message
-          }
-        } catch (error) {
-          console.error('[SSE Stream] Error sending update:', error);
-        }
-      };
-
-      // Subscribe to progress events
+      // Subscribe to updates for this session
       progressEmitter.onProgress(sessionId, progressHandler);
 
-      // Cleanup on client disconnect
-      const cleanup = () => {
-        if (!isClosed) {
-          isClosed = true;
-          progressEmitter.offProgress(sessionId, progressHandler);
-          progressEmitter.cleanupSession(sessionId);
-          console.log(`[SSE Stream] Client disconnected for session: ${sessionId}`);
-        }
+      // Send an initial 'connected' event
+      // Use seq=0 as initial event (before any real progress events)
+      const initial: ProgressUpdate = {
+        sessionId,
+        type: 'connected' as ProgressUpdate['type'],
+        message: 'Connected to progress stream',
+        progress: 0,
+        timestamp: Date.now(),
+        id: 0, // Initial connection has id=0
       };
 
-      // Handle stream abort (client disconnect)
-      req.signal.addEventListener('abort', cleanup);
+      const dataLine = `data: ${JSON.stringify(initial)}\n\n`;
+      try {
+        controller.enqueue(encoder.encode(dataLine));
+        console.log(`[SSE Stream] Sent initial connection event for session: ${sessionId}`);
+      } catch (e) {
+        console.warn('[SSE Stream] initial enqueue failed, aborting', e);
+        cleanup('initial_enqueue_failed');
+        return;
+      }
+      
+      // Register abort handler (client disconnect)
+      const abortHandler = () => cleanup('abort');
+      req.signal.addEventListener('abort', abortHandler);
 
-      // Keep-alive ping every 30 seconds
-      const keepAliveInterval = setInterval(() => {
+      // Keep-alive ping comment/event to prevent some proxies from timing out
+      const keepAlive = setInterval(() => {
         if (isClosed) {
-          clearInterval(keepAliveInterval);
+          clearInterval(keepAlive);
           return;
         }
         try {
-          controller.enqueue(encoder.encode(': keep-alive\n\n'));
+          // use comment (:) or a ping event — here we send an 'event: ping' to allow client to differentiate
+          controller?.enqueue(encoder.encode('event: ping\ndata: keep-alive\n\n'));
         } catch (error) {
           console.error('[SSE Stream] Keep-alive error:', error);
-          clearInterval(keepAliveInterval);
-          cleanup();
+          clearInterval(keepAlive);
+          cleanup('keepalive_error');
         }
-      }, 30000);
+      }, 30_000);
     },
 
     cancel() {
-      isClosed = true;
-      console.log(`[SSE Stream] Stream cancelled for session: ${sessionId}`);
+      cleanup('cancel');
     },
   });
 
@@ -112,8 +131,8 @@ export async function GET(req: NextRequest) {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
-      'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no', // Disable nginx buffering
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
     },
   });
 }

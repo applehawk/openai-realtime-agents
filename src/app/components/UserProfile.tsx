@@ -235,15 +235,19 @@ export default function UserProfile() {
         alert('Container started and healthy. Initializing MCP client...');
 
         // вызываем initializeMCPServersBeforeAgent и ждём, пока MCP подключится
+        // This will recreate the agent with connected MCP servers
         // Note: accessToken is not needed here - mcpServerManager will fetch it from cookies
-        console.log('[UserProfile] 🚀 Initializing MCP servers...');
-        const initResult = await initializeMCPServersBeforeAgent();
+        console.log('[UserProfile] 🚀 Initializing MCP servers and recreating agent...');
+        const agentWithMcp = await initializeMCPServersBeforeAgent();
 
-        if (!initResult) {
-          throw new Error('initializeMCPServersBeforeAgent returned false');
+        if (!agentWithMcp) {
+          throw new Error('initializeMCPServersBeforeAgent returned null - MCP initialization failed');
         }
 
-        console.log('[UserProfile] ✅ MCP initialized successfully');
+        console.log('[UserProfile] ✅ MCP initialized and agent recreated successfully:', {
+          agentName: agentWithMcp.name,
+          mcpCount: agentWithMcp.mcpServers?.length || 0,
+        });
 
         // Fetch and log available MCP tools via server endpoint
         try {

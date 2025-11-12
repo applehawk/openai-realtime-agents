@@ -188,83 +188,28 @@ export const delegateToIntelligentSupervisor = tool({
 
       const result = await response.json();
 
-      console.log('[intelligentSupervisorTool] API response received:', {
-        strategy: result.strategy,
-        complexity: result.complexity,
-        executionTime: result.executionTime,
-        workflowStepsCount: result.workflowSteps?.length || 0,
-        delegateBack: result.delegateBack || false,
+      console.log('[intelligentSupervisorTool] Async task started:', {
+        sessionId: result.sessionId,
+        success: result.success,
       });
 
-      // Handle delegateBack case (v3.2: now based on complexity === 'tooSimple')
-      if (result.delegateBack || result.complexity === 'tooSimple') {
-        console.log('[intelligentSupervisorTool] ✅ Task is tooSimple - delegated back to primary agent');
-        console.log('[intelligentSupervisorTool] Guidance:', result.delegationGuidance);
-        
-        if (addBreadcrumb) {
-          addBreadcrumb('[Intelligent Supervisor] Задача слишком проста - делегирована обратно', {
-            guidance: result.delegationGuidance,
-            complexity: 'tooSimple',
-            executionTime: result.executionTime,
-          });
-        }
-
-        return {
-          success: true,
-          delegateBack: true,
-          guidance: result.delegationGuidance,
-          nextResponse: result.nextResponse,
-          complexity: result.complexity,
-          executionTime: result.executionTime,
-          message: '✅ Задача проста (tooSimple) и может быть выполнена напрямую. Следуй инструкциям в guidance.',
-        };
-      }
-
       if (addBreadcrumb) {
-        addBreadcrumb('[Intelligent Supervisor] Выполнение завершено', {
-          strategy: result.strategy,
-          complexity: result.complexity,
-          executionTime: result.executionTime,
+        addBreadcrumb('[Intelligent Supervisor] Задача запущена асинхронно', {
+          sessionId: result.sessionId,
+          message: result.message,
         });
-
-        // Add breadcrumbs for each workflow step (if provided)
-        if (result.workflowSteps && result.workflowSteps.length > 0) {
-          result.workflowSteps.forEach((step: string, index: number) => {
-            addBreadcrumb(`[Intelligent Supervisor] Шаг ${index + 1}/${result.workflowSteps.length}`, {
-              step,
-              completed: true,
-            });
-          });
-          console.log(
-            `[intelligentSupervisorTool] Added ${result.workflowSteps.length} workflow step breadcrumbs`
-          );
-        }
-
-        // Add breadcrumbs for planned steps (if provided)
-        if (result.plannedSteps && result.plannedSteps.length > 0) {
-          addBreadcrumb('[Intelligent Supervisor] План выполнения составлен', {
-            totalSteps: result.plannedSteps.length,
-            steps: result.plannedSteps,
-          });
-          console.log(
-            `[intelligentSupervisorTool] Added plan with ${result.plannedSteps.length} steps`
-          );
-        }
       }
 
-      console.log('[intelligentSupervisorTool] Returning result');
+      // Return immediately with sessionId
+      // The actual result will come through SSE stream and update TASK_PROGRESS in transcript
+      console.log('[intelligentSupervisorTool] Returning sessionId - execution continues in background');
 
       return {
         success: true,
-        sessionId, // ← IMPORTANT: Agent can use this with getTaskContext tool
-        strategy: result.strategy,
-        complexity: result.complexity,
-        nextResponse: result.nextResponse,
-        workflowSteps: result.workflowSteps || [],
-        plannedSteps: result.plannedSteps,
-        hierarchicalBreakdown: result.hierarchicalBreakdown,
-        progress: result.progress,
-        executionTime: result.executionTime,
+        sessionId: result.sessionId,
+        message: 'Task execution started in background. Progress and results will be shown in real-time via SSE stream.',
+        executionMode: 'async',
+        note: 'The TASK_PROGRESS item in transcript will be updated automatically as the task progresses. Final result will appear when task completes.',
       };
     } catch (error) {
       console.error('[intelligentSupervisorTool] Exception:', error);

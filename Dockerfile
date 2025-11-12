@@ -32,6 +32,7 @@ RUN rm -rf .next
 ENV NEXT_DISABLE_CACHE=1
 
 # Build the Next.js application
+RUN npm install
 RUN npm run build
 
 # Production stage

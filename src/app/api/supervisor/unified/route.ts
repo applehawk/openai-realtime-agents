@@ -31,14 +31,14 @@ import { IntelligentSupervisor, UnifiedRequest } from './intelligentSupervisor';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { taskDescription, conversationContext, executionMode, maxComplexity, history, sessionId } = body;
+    const { taskDescription, conversationContext, executionMode, maxComplexity, history, sessionId: clientSessionId } = body;
 
     console.log('[API /api/supervisor/unified] Request received:', {
       taskDescription: taskDescription?.substring(0, 100) + '...',
       executionMode: executionMode || 'auto',
       maxComplexity: maxComplexity || 'hierarchical',
       historyLength: history?.length || 0,
-      sessionId: sessionId || 'auto-generated',
+      sessionId: clientSessionId || 'auto-generated',
     });
 
     // Validate required parameters
@@ -74,40 +74,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create IntelligentSupervisor with config (including sessionId for SSE)
-    const supervisor = new IntelligentSupervisor({
-      enableProgressCallbacks: true,
-      maxComplexity: maxComplexity || 'hierarchical',
-      maxNestingLevel: 3,
-      maxSubtasksPerTask: 12,
-      sessionId: sessionId, // Pass sessionId for SSE progress tracking
+    // Generate sessionId for this execution
+    const sessionId = clientSessionId || `session-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+
+    console.log('[API /api/supervisor/unified] Starting ASYNC execution with sessionId:', sessionId);
+
+    // Return sessionId immediately - execution will happen in background
+    // Client should connect to SSE stream to receive progress updates and final result
+    const response = NextResponse.json({
+      success: true,
+      sessionId,
+      message: 'Task execution started. Connect to /api/supervisor/unified/stream to receive updates.',
     });
 
-    // Build unified request
-    const unifiedRequest: UnifiedRequest = {
+    // Start async execution (don't await - fire and forget)
+    executeTaskAsync(
+      sessionId,
       taskDescription,
       conversationContext,
-      executionMode: executionMode || 'auto',
-      history,
-    };
-
-    console.log('[API /api/supervisor/unified] Executing with IntelligentSupervisor...');
-
-    // Execute task with adaptive complexity
-    const result = await supervisor.execute(unifiedRequest);
-
-    console.log('[API /api/supervisor/unified] Execution complete:', {
-      strategy: result.strategy,
-      complexity: result.complexity,
-      executionTime: result.executionTime,
-      workflowStepsCount: result.workflowSteps.length,
+      executionMode || 'auto',
+      maxComplexity || 'hierarchical',
+      history
+    ).catch((error) => {
+      console.error('[API /api/supervisor/unified] Async execution error:', error);
     });
 
-    // Return result with sessionId for SSE subscription
-    return NextResponse.json({
-      ...result,
-      sessionId: supervisor['sessionId'], // Include sessionId in response for client
-    });
+    return response;
   } catch (error) {
     console.error('[API /api/supervisor/unified] Error:', error);
 
@@ -118,5 +110,67 @@ export async function POST(req: NextRequest) {
       },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Execute task asynchronously and emit results via SSE
+ */
+async function executeTaskAsync(
+  sessionId: string,
+  taskDescription: string,
+  conversationContext: string,
+  executionMode: 'auto' | 'plan' | 'execute',
+  maxComplexity: 'flat' | 'hierarchical',
+  history: any[]
+): Promise<void> {
+  console.log('[executeTaskAsync] Starting for session:', sessionId);
+
+  try {
+    // Create IntelligentSupervisor with config
+    const supervisor = new IntelligentSupervisor({
+      enableProgressCallbacks: true,
+      maxComplexity,
+      maxNestingLevel: 3,
+      maxSubtasksPerTask: 12,
+      sessionId,
+    });
+
+    // Build unified request
+    const unifiedRequest: UnifiedRequest = {
+      taskDescription,
+      conversationContext,
+      executionMode,
+      history,
+    };
+
+    // Execute task with adaptive complexity
+    const result = await supervisor.execute(unifiedRequest);
+
+    console.log('[executeTaskAsync] Execution complete:', {
+      sessionId,
+      strategy: result.strategy,
+      complexity: result.complexity,
+      executionTime: result.executionTime,
+      workflowStepsCount: result.workflowSteps.length,
+    });
+
+    // Emit final result via progress emitter (will be sent through SSE)
+    // The 'completed' event is already emitted by supervisor.execute()
+    // Just log confirmation here
+    console.log('[executeTaskAsync] Final result emitted via SSE for session:', sessionId);
+  } catch (error) {
+    console.error('[executeTaskAsync] Error:', error);
+
+    // Emit error via progress emitter
+    const { progressEmitter } = await import('./progressEmitter');
+    progressEmitter.emitProgress({
+      sessionId,
+      type: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error during task execution',
+      progress: 0,
+      timestamp: Date.now(),
+      details: { error: error instanceof Error ? error.stack : String(error) },
+    });
   }
 }
